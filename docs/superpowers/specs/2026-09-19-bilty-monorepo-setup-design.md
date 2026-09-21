@@ -7,7 +7,7 @@ Initialize a pnpm workspace monorepo for the Digital Bilty/GR Platform with Nest
 ## Goals
 
 - Establish monorepo structure: `apps/api`, `apps/web`, `packages/shared-types`
-- Define all six core entities with strict TypeScript types
+- Define all seven core entities with strict TypeScript types
 - Set up NestJS with TypeORM and module structure
 - Set up Next.js with App Router
 - Shared types consumable by both apps
@@ -172,12 +172,17 @@ All interfaces mirror entity shapes without ORM decorators. All IDs are UUIDs (s
 - `vehicleNumber: string | null`
 - `driverName: string | null`
 - `driverPhone: string | null`
-- `ewayBillNumber: string | null`
 - `status: BiltyStatus`
 - `isEdited: boolean`
 - `editedAt: Date | null`
 - `createdAt: Date`
 - `updatedAt: Date`
+
+**IEwayBill:**
+- `id: string`
+- `biltyId: string`
+- `number: string`
+- `createdAt: Date`
 
 ## Backend (NestJS) Structure
 
@@ -223,8 +228,15 @@ apps/api/src/
     │   └── ...
     ├── consignee/
     │   └── ...
-    └── bilty/
-        └── ...
+    ├── bilty/
+    │   └── ...
+    └── eway-bill/
+        ├── eway-bill.module.ts
+        ├── eway-bill.controller.ts
+        ├── eway-bill.service.ts
+        ├── entities/
+        │   └── eway-bill.entity.ts
+        └── dto/
 ```
 
 ### Entity Definitions
@@ -260,6 +272,11 @@ All entities use:
 - All fields from IBilty
 - `weight` and `freightAmount` as `decimal(10,2)`
 - `@ManyToOne` to Company, Consignor, Consignee
+- `@OneToMany` to EwayBill
+
+**EwayBill Entity:**
+- All fields from IEwayBill
+- `@ManyToOne` to Bilty
 
 ### Dependencies (apps/api)
 
