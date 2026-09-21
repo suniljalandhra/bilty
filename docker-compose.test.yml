@@ -1,0 +1,18 @@
+# Run only through scripts/test-docker.mjs: unique project, random host port,
+# tmpfs data, automatic cleanup. Never mounts the development database volume.
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '127.0.0.1::5432'
+    environment:
+      POSTGRES_USER: bilty_test
+      POSTGRES_PASSWORD: bilty-test-only
+      POSTGRES_DB: bilty_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bilty_test -d bilty_test']
+      interval: 2s
+      timeout: 5s
+      retries: 30

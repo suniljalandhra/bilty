@@ -1,0 +1,27 @@
+{
+  "name": "bilty-platform",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm --filter @bilty/shared-types build && pnpm -r typecheck",
+    "test": "pnpm --filter @bilty/api test",
+    "test:integration": "pnpm --filter @bilty/api test:integration",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "db:migrate": "pnpm --filter @bilty/api db:migrate",
+    "docker:dev": "docker compose --profile dev up -d --wait postgres",
+    "docker:stop": "docker compose --profile dev stop postgres",
+    "docker:migrate": "docker compose --profile tools run --build --rm migrations",
+    "test:docker": "node scripts/test-docker.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.9.8",
+    "typescript": "~5.9.3"
+  }
+}

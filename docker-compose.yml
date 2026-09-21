@@ -1,0 +1,30 @@
+name: bilty
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: [dev, tools]
+    ports:
+      - '127.0.0.1:${DB_PORT:-55432}:5432'
+    environment:
+      POSTGRES_USER: ${DB_USER:-bilty}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-bilty-local-only}
+      POSTGRES_DB: ${DB_NAME:-bilty}
+    volumes:
+      - bilty_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  migrations:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-bilty}:${DB_PASSWORD:-bilty-local-only}@postgres:5432/${DB_NAME:-bilty}
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  bilty_pgdata:
