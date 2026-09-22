@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Plus, SlidersHorizontal } from 'lucide-react';
 import type { BiltyRecord } from '@bilty/shared-types';
 import { api, errorMessage } from '@/lib/api';
 import { dateOnly, money } from '@/lib/model';

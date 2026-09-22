@@ -27,10 +27,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         .then(setCompany)
         .catch(() => {});
   }, [user?.companyId, pathname]);
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
   return (
     <AuthGate>
       <div className="app-shell">
-        <aside className="sidebar">
+        {mobileNavOpen && (
+          <button
+            className="mobile-nav-backdrop"
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
+        <aside id="workspace-navigation" className="sidebar">
           <Brand />
           <div className="company-switch">
             <span className="company-avatar">
@@ -96,6 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               type="button"
               aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
               aria-expanded={mobileNavOpen}
+              aria-controls="workspace-navigation"
               onClick={() => setMobileNavOpen((open) => !open)}
             >
               {mobileNavOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}

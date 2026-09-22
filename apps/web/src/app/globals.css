@@ -1508,11 +1508,14 @@ tbody tr:hover { background: #f8faff; }
 .badge { padding: 4px 8px; border-radius: 999px; font-size: 10px; }
 .pagination { padding: 15px 20px; font-size: 11px; }
 .mobile-nav-toggle { display: none; }
+.mobile-nav-backdrop { display: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #92a7df; outline-offset: 2px; }
 
 @media (max-width: 760px) {
   .app-shell { display: block; }
   .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: 276px; transform: translateX(-100%); transition: transform .18s ease; box-shadow: 12px 0 30px #17223718; }
   .app-shell:has(.mobile-nav-toggle[aria-expanded='true']) .sidebar { transform: translateX(0); }
+  .mobile-nav-backdrop { display: block; position: fixed; z-index: 19; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; background: #17223752; }
   .mobile-nav-toggle { display: inline-flex; margin-right: 10px; }
   .mobile-nav-toggle svg { width: 18px; height: 18px; }
   .topbar { padding: 0 16px; }
