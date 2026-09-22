@@ -139,11 +139,36 @@ tbody tr:hover { background: #111c2d; }
   .page-heading h1 { font-size: 25px; }
 }
 
+/* Form sections */
 .form-stack { gap: 20px; }
-.form-stack > .section, .form-stack > section { border-color: var(--line); }
-.form-footer { background: #0d1524; border-color: var(--line); }
-.total-row, .document-total { background: #17223a; border-color: #40557b; color: var(--ink); }
-.reference-row, .inline-field, .measurement, .party-fields { background: #0d1524; border-color: var(--line); }
+.form-stack > .section, .form-stack > section { border-color: #1e2c42; }
+.section-heading { border-color: #1e2c42; }
+.section-heading h2 { color: var(--ink); }
+.section-body { background: var(--surface); }
+.field-label { color: #9aa8bd; }
+.form-footer { background: #0d1524; border-color: #1e2c42; box-shadow: 0 -4px 20px #000000aa; }
+.form-footer > span { color: #7a8da5; }
+.party-grid { gap: 28px; }
+.party-fields { background: transparent; border-color: transparent; }
+.party-fields + .party-fields { border-left-color: #1e2c42; }
+.party-label { margin-bottom: 18px; }
+.party-label h3 { color: var(--ink); }
+.party-label > span { background: #1a2448; color: #8fa8e6; border-radius: 4px; }
+.party-label small { color: #7a8da5; }
+.reference-row { background: transparent; border-color: #1e2c42; padding: 12px 0; }
+.reference-index { color: #5a6d88; }
+.inline-field { background: transparent; }
+.measurement { background: transparent; }
+.money-input { background: #0a1220; border-color: #1e2c42; }
+.money-input > span { color: #5a6d88; }
+.money-input:focus-within { border-color: var(--blue); outline: 2px solid var(--blue); outline-offset: 1px; }
+.total-row { background: #0d1524; border-color: #1e2c42; padding: 18px 0; }
+.total-row > span { color: var(--ink); }
+.total-row small { color: #7a8da5; }
+.total-row strong { color: var(--blue); font-size: 24px; }
+/* Conflict resolution */
+.conflict-field { background: #0d1524; border-color: #1e2c42; }
+.conflict-field h3 { color: var(--ink); }
 .detail-layout { align-items: start; }
 .detail-aside { position: sticky; top: 24px; }
 .detail-aside .section { background: var(--surface); }
