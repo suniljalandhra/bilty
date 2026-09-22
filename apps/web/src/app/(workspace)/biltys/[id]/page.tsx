@@ -164,7 +164,7 @@ export default function BiltyDetailPage({ params }: { params: Promise<{ id: stri
         </button>
       </div>
       {tab === 'document' ? (
-        <div className="detail-layout">
+        <div className="detail-layout document-viewer">
           <BiltyDocument record={record} />
           <aside className="detail-aside">
             <PrintShare record={record} />

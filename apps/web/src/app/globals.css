@@ -1,16 +1,20 @@
 :root {
-  --bg: #f4f4f1;
-  --surface: #fff;
-  --ink: #17181a;
-  --muted: #6a6e75;
-  --line: #e2e2dc;
-  --blue: #2d4f9e;
-  --blue-dark: #213d7e;
-  --blue-light: #eef2fb;
-  --green: #1d7a4c;
-  --red: #ae352f;
+  --bg: #080d18;
+  --surface: #101827;
+  --surface-muted: #0d1524;
+  --surface-raised: #172033;
+  --ink: #f4f7fb;
+  --muted: #9aa8bd;
+  --line: #28364c;
+  --blue: #7890ff;
+  --blue-dark: #5d74ed;
+  --blue-light: #1d2a55;
+  --green: #43d18a;
+  --red: #ff7474;
+  --amber: #f5b642;
+  --cyan: #46d8ee;
   --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
-  --radius: 9px;
+  --radius: 8px;
 }
 * {
   box-sizing: border-box;
@@ -1684,7 +1688,7 @@ pre {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  background: radial-gradient(ellipse at 50% 10%, #f9f9f6, var(--bg) 60%);
+  background: var(--bg);
 }
 .auth-wrap {
   width: 100%;
@@ -1694,9 +1698,9 @@ pre {
   margin-bottom: 30px;
 }
 .auth-card {
-  background: #fff;
+  background: var(--surface);
   padding: 34px;
-  border: 1px solid #e1e3dd;
+  border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 4px 22px #1c284006;
 }
