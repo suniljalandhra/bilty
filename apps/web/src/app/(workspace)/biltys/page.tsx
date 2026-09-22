@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ArrowUpRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import type { BiltyRecord } from '@bilty/shared-types';
 import { api, errorMessage } from '@/lib/api';
 import { dateOnly, money } from '@/lib/model';
@@ -63,7 +64,8 @@ export default function BiltyListPage() {
         description="Every consignment. Every detail. All in one place."
         actions={
           <Link href="/biltys/new" className="button primary">
-            <span aria-hidden>＋</span>New bilty
+            <Plus aria-hidden="true" data-icon="inline-start" />
+            New bilty
           </Link>
         }
       />
@@ -74,6 +76,7 @@ export default function BiltyListPage() {
               label="Search biltys"
               type="search"
               placeholder="Bilty no., party, route or vehicle"
+              className="search-input"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -95,6 +98,10 @@ export default function BiltyListPage() {
           </div>
         </div>
         <div className="date-filters">
+          <div className="filter-heading">
+            <SlidersHorizontal aria-hidden="true" />
+            <span>Refine results</span>
+          </div>
           <TextField
             label="Created from"
             type="date"
@@ -162,13 +169,13 @@ export default function BiltyListPage() {
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.id}>
-                        <td>
+                        <td data-label="Bilty / date">
                           <Link className="document-link" href={`/biltys/${row.id}`}>
                             {row.number || 'Untitled draft'}
                           </Link>
                           <span className="cell-secondary">{dateOnly(row.createdAt)}</span>
                         </td>
-                        <td>
+                        <td data-label="Parties">
                           <span className="cell-main">
                             {row.data.consignor.name || 'No consignor'}
                           </span>
@@ -176,25 +183,25 @@ export default function BiltyListPage() {
                             → {row.data.consignee.name || 'No consignee'}
                           </span>
                         </td>
-                        <td>
+                        <td data-label="Route">
                           <span className="cell-main">{row.data.fromLocation || '—'}</span>
                           <span className="cell-secondary">→ {row.data.toLocation || '—'}</span>
                         </td>
-                        <td className="mono">{row.data.vehicleNumber || '—'}</td>
-                        <td>
+                        <td data-label="Vehicle" className="mono">{row.data.vehicleNumber || '—'}</td>
+                        <td data-label="Status">
                           <Badge status={row.status} />
                           {row.isEdited && (
                             <span className="cell-secondary">Edited · v{row.version}</span>
                           )}
                         </td>
-                        <td className="align-right mono">{money(row.data.charges.freightPaise)}</td>
+                        <td data-label="Freight" className="align-right mono">{money(row.data.charges.freightPaise)}</td>
                         <td>
                           <Link
                             href={`/biltys/${row.id}`}
                             className="row-open"
                             aria-label={`Open ${row.number || 'draft bilty'}`}
                           >
-                            ↗
+                            <ArrowUpRight aria-hidden="true" />
                           </Link>
                         </td>
                       </tr>
