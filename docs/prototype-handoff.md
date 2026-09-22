@@ -18,3 +18,7 @@ The HTML export is an interaction/layout reference, not production Next.js code.
 ## Explicit simulations
 
 Google sign-in, employee invitations, PDF generation, copied messages and share links are simulations. Client role switching is a demo control, not security. Preview data is in memory and resets on reload. Production uses authenticated API access and durable persistence.
+
+## Auth integration contract
+
+The production Next.js app now lives in apps/web in the backend repository. It implements login/callback/invitations, company setup, the complete bilty lifecycle, audit, address book, team/settings and PDF/share actions against docs/auth-api.md. It keeps access tokens in memory, coordinates cookie refresh across tabs, reconciles 409 edits and sends full-document PUT. The HTML export still simulates these flows and remains a design reference. Assisted onboarding and client-authoritative roles are excluded.

@@ -6,13 +6,13 @@ import { createDraft, editBilty, issueBilty, cancelBilty } from './domain';
 import { BiltyError } from './errors';
 import { parseCompany } from './validation';
 
-const selectRecord = `SELECT id,company_id AS "companyId",number,status,version,data,
+export const selectRecord = `SELECT id,company_id AS "companyId",number,status,version,data,
  company_snapshot AS "companySnapshot",is_edited AS "isEdited",created_at AS "createdAt",
  updated_at AS "updatedAt",issued_at AS "issuedAt",edited_at AS "editedAt",cancelled_at AS "cancelledAt" FROM biltys`;
 const timestampKeys = ['createdAt', 'updatedAt', 'issuedAt', 'editedAt', 'cancelledAt'] as const;
 type DbRecord = Omit<BiltyRecord, (typeof timestampKeys)[number]> &
   Record<(typeof timestampKeys)[number], Date | null>;
-function hydrate(row: DbRecord): BiltyRecord {
+export function hydrate(row: DbRecord): BiltyRecord {
   return {
     ...row,
     createdAt: row.createdAt!.toISOString(),
@@ -54,13 +54,18 @@ export class BiltyService {
     if (!rows[0]) throw new BiltyError('NOT_FOUND', 'Bilty not found');
     return hydrate(rows[0]);
   }
-  private async checkParties(tx: EntityManager, actor: Actor, data: BiltyData): Promise<void> {
+  private async checkParties(
+    tx: EntityManager,
+    actor: Actor,
+    data: BiltyData,
+    previous?: BiltyData,
+  ): Promise<void> {
     for (const kind of ['consignor', 'consignee'] as const) {
       const id = data[kind].partyId;
       if (!id) continue;
       const rows: unknown[] = await tx.query(
-        'SELECT id FROM parties WHERE id=$1 AND company_id=$2 AND kind=$3 FOR SHARE',
-        [id, actor.companyId, kind],
+        'SELECT id FROM parties WHERE id=$1 AND company_id=$2 AND kind=$3 AND (archived_at IS NULL OR $4) FOR SHARE',
+        [id, actor.companyId, kind, previous?.[kind].partyId === id],
       );
       if (!rows.length)
         throw new BiltyError('VALIDATION', `Invalid ${kind} party reference for company`);
@@ -128,12 +133,32 @@ export class BiltyService {
   async get(actor: Actor, id: string): Promise<BiltyRecord> {
     return this.authorized(actor, (tx) => this.load(tx, actor, id));
   }
-  /** Initial bounded list. Cursor pagination will be added with the HTTP slice. */
-  async list(actor: Actor): Promise<BiltyRecord[]> {
+  /** Bounded offset pagination with deterministic ordering. */
+  async list(
+    actor: Actor,
+    limit = 100,
+    offset = 0,
+    filter: { q?: string; status?: string; from?: string; to?: string } = {},
+  ): Promise<BiltyRecord[]> {
+    z.number().int().min(1).max(100).parse(limit);
+    z.number().int().min(0).max(100000).parse(offset);
     return this.authorized(actor, async (tx) => {
       const rows: DbRecord[] = await tx.query(
-        `${selectRecord} WHERE company_id=$1 ORDER BY created_at DESC,id LIMIT 100`,
-        [actor.companyId],
+        `${selectRecord} WHERE company_id=$1
+        AND ($4::text IS NULL OR status=$4)
+        AND ($5::text IS NULL OR concat_ws(' ',number,data->'consignor'->>'name',data->'consignee'->>'name',data->>'vehicleNumber',data->>'fromLocation',data->>'toLocation') ILIKE $5)
+        AND ($6::date IS NULL OR created_at >= $6::date)
+        AND ($7::date IS NULL OR created_at < $7::date + interval '1 day')
+        ORDER BY created_at DESC,id LIMIT $2 OFFSET $3`,
+        [
+          actor.companyId,
+          limit,
+          offset,
+          filter.status ?? null,
+          filter.q ? '%' + filter.q + '%' : null,
+          filter.from ?? null,
+          filter.to ?? null,
+        ],
       );
       return rows.map(hydrate);
     });
@@ -144,7 +169,7 @@ export class BiltyService {
       if (before.status === 'issued') return before;
       if (before.status === 'cancelled')
         throw new BiltyError('CONFLICT', 'Cancelled bilty is immutable');
-      await this.checkParties(tx, actor, before.data);
+      await this.checkParties(tx, actor, before.data, before.data);
       const [companies]: [
         Array<{ number_prefix: string; allocated: string; profile: unknown }>,
         number,
@@ -177,7 +202,7 @@ export class BiltyService {
     return this.authorized(actor, async (tx) => {
       const before = await this.load(tx, actor, id, true);
       const t = editBilty(before, expectedVersion, raw, reason, actor, new Date().toISOString());
-      await this.checkParties(tx, actor, t.bilty.data);
+      await this.checkParties(tx, actor, t.bilty.data, before.data);
       return this.store(tx, t);
     });
   }

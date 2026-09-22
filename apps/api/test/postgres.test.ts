@@ -34,17 +34,33 @@ beforeEach(async () => {
       company,
       'EX/',
     ]);
+    await db.query('INSERT INTO users(id) VALUES($1) ON CONFLICT DO NOTHING', [userId]);
     await db.query("INSERT INTO memberships(user_id,company_id,role) VALUES($1,$2,'employee')", [
       userId,
       id,
     ]);
   }
 });
-test('migration can be reverted and reapplied on an empty database', async () => {
+test('auth migration rollback/reapply preserves issued data, counter, membership and legacy identities', async () => {
+  const draft = await service.createDraft(actor, completeData());
+  const issued = await service.issue(actor, draft.id, 1);
   await db.undoLastMigration();
+  await db.undoLastMigration();
+  const before = await db.query('SELECT next_number,profile FROM companies WHERE id=$1', [
+    companyId,
+  ]);
+  assert.equal(before[0].next_number, '2');
   await db.runMigrations();
-  const rows = await db.query('SELECT * FROM biltys');
-  assert.equal(rows.length, 0);
+  assert.deepEqual(await service.get(actor, issued.id), issued);
+  assert.equal((await service.history(actor, issued.id)).length, 2);
+  const rows = await db.query('SELECT google_sub,email FROM users WHERE id=$1', [actor.userId]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].google_sub, null);
+  assert.equal(rows[0].email, null);
+  assert.deepEqual(
+    (await db.query('SELECT profile FROM companies WHERE id=$1', [companyId]))[0].profile,
+    before[0].profile,
+  );
 });
 test('draft, issue, edit and cancel persist snapshots and full audit', async () => {
   const b = await service.createDraft(actor, completeData());

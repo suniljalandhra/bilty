@@ -8,20 +8,26 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm --filter @bilty/shared-types build && pnpm -r typecheck",
-    "test": "pnpm --filter @bilty/api test",
+    "test": "pnpm --filter @bilty/api test && pnpm --filter @bilty/web test",
     "test:integration": "pnpm --filter @bilty/api test:integration",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "db:migrate": "pnpm --filter @bilty/api db:migrate",
     "docker:dev": "docker compose --profile dev up -d --wait postgres",
-    "docker:stop": "docker compose --profile dev stop postgres",
+    "docker:stop": "docker compose --profile dev --profile tools --profile app stop",
     "docker:migrate": "docker compose --profile tools run --build --rm migrations",
     "test:docker": "node scripts/test-docker.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "docker:api": "docker compose --profile app up --build -d --wait api",
+    "start:api": "pnpm --filter @bilty/api start",
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "docker:app": "docker compose --profile app up --build -d --wait"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
     "prettier": "^3.9.8",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3"
   }
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validInlineLogo } from '../company/logo';
 import type { BiltyData, CompanySnapshot } from '@bilty/shared-types';
 import { BiltyError } from './errors';
 import { MAX_PAISE, totalPaise } from './money';
@@ -113,7 +114,12 @@ const companySchema = z.strictObject({
   pan: text,
   phone: text,
   email: text,
-  logoUrl: text,
+  logoUrl: z
+    .string()
+    .trim()
+    .max(200000)
+    .refine(validInlineLogo, 'Invalid or oversized logo; use a PNG/JPEG up to 2048px')
+    .default(''),
   primaryColor: text,
   accentColor: text,
   bankDetails: text,

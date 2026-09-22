@@ -6,3 +6,10 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+.next/
+.next-e2e/
+test-results/
+playwright-report/
+
+*.tsbuildinfo

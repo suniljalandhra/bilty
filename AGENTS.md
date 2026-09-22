@@ -23,15 +23,17 @@ packages/shared-types/  # Shared TypeScript types
 
 ## Current Implementation Status
 
-The backend domain/persistence foundation exists. Next.js and authentication are planned follow-up slices; no public HTTP API is exposed yet. See README.md and docs/prd.md for current scope. Do not wire the trusted Actor context directly to request-body values.
+The Next.js frontend, authenticated Nest API, Google OAuth/session/invitation services, bilty lifecycle, PDF rendering and revocable PDF sharing are implemented for local V1. See README.md and docs/prd.md for current scope. Do not wire the trusted Actor context directly to request-body values.
 
 ## Commands
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm check             # Typecheck, domain tests, build
+pnpm check             # Format, typecheck, API/web tests, production builds
 pnpm test              # No database required
 pnpm test:docker       # Preferred: isolated PostgreSQL in Docker
+pnpm test:e2e          # Isolated browser journeys (Playwright Chromium)
+pnpm docker:app        # Build and start the complete web/API/database stack
 pnpm docker:dev        # Development infrastructure
 pnpm docker:migrate    # Containerized migration runner
 pnpm docker:stop       # Stop without deleting development data
@@ -41,7 +43,7 @@ pnpm build
 pnpm typecheck
 ```
 
-There are no dev/web/lint scripts yet; do not claim a frontend, server or lint run exists.
+`pnpm --filter @bilty/web dev` runs Next locally. `pnpm docker:api` starts the backend only; `pnpm start:api` runs its host build. Prefer `docker:app` for the whole application.
 
 ## Architecture
 
@@ -50,8 +52,11 @@ There are no dev/web/lint scripts yet; do not claim a frontend, server or lint r
 - Bilty domain, validation, money and persistence: apps/api/src/modules/bilty/.
 - Explicit TypeORM migrations: apps/api/src/database/migrations/; synchronize is disabled.
 - Nested e-way/invoice arrays are part of the validated JSONB bilty aggregate and its audit boundary, not standalone public controllers.
-- BiltyModule exports a tenant-scoped service for a future authenticated Nest application.
-- Future Next.js routes use App Router with (auth) and (dashboard) groups.
+- BiltyModule exports a tenant-scoped service; app.ts wires it into authenticated HTTP controllers. Preserve the SQL/JSONB schema. PUT requires the complete nested document.
+- Next.js routes use App Router with a protected (workspace) group and public login/callback/invite/setup entry points.
+- Global Nest AuthGuard plus @Public() metadata control authentication; services enforce live transactional tenant/admin authorization.
+- PDF shares store fixed issued snapshots and hashed bearer links; cancellation invalidates every link.
+- Test-only Google provider harnesses live under apps/api/test and are excluded from production images. Never add an authentication bypass.
 
 ## Git Commit Rules
 

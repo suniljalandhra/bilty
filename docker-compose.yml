@@ -2,7 +2,7 @@ name: bilty
 services:
   postgres:
     image: postgres:16-alpine
-    profiles: [dev, tools]
+    profiles: [dev, tools, app]
     ports:
       - '127.0.0.1:${DB_PORT:-55432}:5432'
     environment:
@@ -17,7 +17,7 @@ services:
       timeout: 5s
       retries: 30
   migrations:
-    profiles: [tools]
+    profiles: [tools, app]
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -26,5 +26,64 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+  api:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ['node', 'apps/api/dist/main.js']
+    ports:
+      - '127.0.0.1:${API_PORT:-3000}:3000'
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-bilty}:${DB_PASSWORD:-bilty-local-only}@postgres:5432/${DB_NAME:-bilty}
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-development}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/auth/google/callback}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3001}:3001'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 volumes:
   bilty_pgdata:

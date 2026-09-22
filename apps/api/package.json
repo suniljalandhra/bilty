@@ -5,20 +5,36 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/domain.test.ts",
-    "test:integration": "node --import tsx --test test/postgres.test.ts",
-    "db:migrate": "node --import tsx src/database/migrate.ts"
+    "test": "node --import tsx --test test/domain.test.ts test/*unit.test.ts",
+    "test:integration": "node --import tsx --test --test-concurrency=1 test/*postgres.test.ts",
+    "db:migrate": "node --import tsx src/database/migrate.ts",
+    "start": "node dist/main.js"
   },
   "dependencies": {
     "@bilty/shared-types": "workspace:*",
     "@nestjs/common": "^11.1.6",
-    "typeorm": "~0.3.28",
+    "@nestjs/core": "^11.2.5",
+    "@nestjs/platform-express": "^11.2.5",
+    "bcrypt": "^6.0.0",
+    "google-auth-library": "^10.9.1",
+    "image-size": "^2.0.4",
+    "jpeg-js": "^0.4.4",
+    "jsonwebtoken": "^9.0.3",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
+    "pngjs": "^7.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "typeorm": "~0.3.28",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pngjs": "^6.0.5",
+    "pdf-parse": "^2.4.5",
     "tsx": "^4.20.0"
   }
 }

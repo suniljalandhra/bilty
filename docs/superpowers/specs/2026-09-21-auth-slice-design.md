@@ -1,432 +1,52 @@
-# Digital Bilty Platform — Auth & HTTP Slice Design Spec
+# Auth & HTTP Slice Design Spec
 
-Created 21 September 2026. This spec covers OAuth authentication, session management, invitations, and HTTP controllers for the Bilty platform.
+Approved direction: 21 September 2026. This revision incorporates the repository review and is the auth implementation contract. The later complete-v1-design.md extends it with the frontend, PDFs and shares.
 
-## Goal
+## Scope and architecture
 
-Add Google OAuth authentication, stateful refresh sessions, employee invitations, and HTTP controllers for bilty CRUD. Self-serve company onboarding only (no admin-managed path in V1).
+NestJS HTTP API, Google OpenID Connect, PostgreSQL-backed sessions, invitations, self-service company setup, company/member/party endpoints and authenticated bilty lifecycle. Preserve TypeORM's explicit migrations and existing parameterized SQL services; do not introduce incompatible ORM entities. Next.js, email delivery, PDFs, uploads and assisted/platform-admin onboarding are deferred. V1 supports one company per user, including revoked memberships; moving companies requires a later administrative workflow.
 
-## Constraints
+## Compatible persistence
 
-- NestJS + TypeORM + PostgreSQL; pnpm workspace; strict TypeScript.
-- Follows patterns from doma-backend: guards, decorators, JWT with HS256.
-- Never trust request-body role/companyId; JWT payload is authoritative.
-- All tokens (refresh, invite) stored as SHA-256 hashes.
+Keep companies(profile JSONB, number_prefix, next_number), memberships(user_id primary key, company_id, role, active), parties(snapshot JSONB, kind) and all bilty/audit columns unchanged. Add users(id, normalized nullable unique email, nullable unique google_sub, name, avatar_url, timestamps); backfill identity-less users for existing membership IDs before adding the foreign key. Never automatically link a Google login to these legacy identities by email. Existing operators need a separate trusted identity reconciliation before real deployment.
 
-## Entities
+Add memberships.joined_at/revoked_at and parties.archived_at. Add sessions(id, user_id, expires_at, revoked_at, created_at), refresh_tokens(token_hash primary key, session_id, used_at, created_at), invites(id, company_id, normalized email, role, token_hash unique, expires_at, accepted_at, revoked_at, invited_by, created_at), oauth_states(state_hash primary key, browser_hash, nonce_hash, code_verifier, invite_hash, expires_at). All bearer tokens are 32 random bytes encoded base64url and only SHA-256 hashes persist. The short-lived PKCE verifier must remain recoverable for code exchange and is deleted with the state. Explicit migration rollback removes only auth additions; never drops foundation data. Number counters and issued snapshots survive upgrade.
 
-### User
+## Google login and onboarding
 
-```typescript
-@Entity('users')
-export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+GET /auth/google creates a ten-minute, single-use state, random browser binding cookie, nonce and S256 PKCE challenge. Optional invite token is hashed and bound in server-side state. State must match both callback and browser cookie and be unexpired; consume it atomically before exchange. Use Google OAuth2Client for code exchange and signature/issuer/audience/expiry validation. Require sub, email_verified, email and matching nonce. Use sub as identity; email is not an account-linking key.
 
-  @Column({ unique: true })
-  email: string;                    // Normalized lowercase
+Callback upserts identity by sub inside a transaction. A supplied invite must be unexpired, unrevoked and unused with exact normalized verified email. Lock invite and consume it in the same transaction as membership creation/reactivation. Existing membership in another company returns 409; active same-company membership returns 409; revoked same-company membership can be reactivated explicitly by an invite. Without an invite, revoked membership returns 403. New identity without a membership gets an onboarding session. Repeated login must not create duplicate companies.
 
-  @Column()
-  name: string;
+POST /auth/onboard with bearer access token and {profile, numberPrefix} creates company and admin membership transactionally once; profile.name is required, other print fields follow the existing CompanySnapshot contract. Existing membership returns 409. Counter always starts at 1; never writable by clients. Company settings can subsequently update profile or prefix; issued snapshots stay unchanged.
 
-  @Column({ nullable: true })
-  avatarUrl: string | null;
+Callback sets refresh cookie and redirects only to configured FRONTEND_URL + /auth/callback. No credentials in redirect URLs. The frontend POSTs /auth/refresh and keeps the returned access token in memory. Google credentials and registered callback must be configured by the operator; tests replace only the external Google provider.
 
-  @Column({ unique: true })
-  googleId: string;
+## Sessions and authorization
 
-  @CreateDateColumn()
-  createdAt: Date;
+Access JWT: HS256 only, 15 minutes, fixed issuer bilty-api and audience bilty-web, sub=userId, sid=sessionId. No authoritative company/role claims: every authenticated request resolves live session and membership from PostgreSQL. Onboarding tokens permit /auth/me, /auth/onboard and logout/refresh only. Protected company routes require active membership. Administrative services recheck current admin membership within their write transaction.
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+Refresh cookie: HttpOnly, SameSite=Lax, Path=/auth, Secure in production, no Domain. Session lifetime is seven days absolute, never extended by refresh. Each refresh locks its session, marks the current token used and creates a new hashed token atomically. Reuse revokes the whole session, including its access tokens; clients must serialize refresh across tabs. Retain used hashes until session expiry for replay detection. Revoked/expired session or membership blocks refresh and authenticated requests. Current-session logout uses sid; logout-all revokes all sessions for that user. Both clear the cookie. Authentication responses use Cache-Control: no-store.
 
-  @OneToMany(() => Membership, (m) => m.user)
-  memberships: Membership[];
+Require exact configured frontend Origin on cookie-authenticated refresh and logout operations; reject missing/null/foreign origins. Credentialed CORS allows that origin only. JSON requests have a bounded 256KB body and reject unknown DTO properties. Login redirects are fixed; no returnTo/open redirects. Never log codes, cookies, tokens or raw database errors. Configure at least a 32-byte random JWT secret. Production configuration requires HTTPS frontend/callback URLs. The API trusts no proxy headers by default. Per-process IP rate limits bound public auth requests; a shared gateway limiter is required before multi-instance deployment.
 
-  @OneToMany(() => Session, (s) => s.user)
-  sessions: Session[];
-}
-```
+## Tenant and lifecycle rules
 
-### Company
+Member administration is serialized per company and cannot revoke its last active admin. Revoking a member revokes that user's sessions atomically. Invite operations require current admin role and same-company scope; public verification returns only invited email and role, never the token hash. Invite lifetime is seven days; creation returns a link once for manual sharing. Repeated acceptance and expired/revoked invitations fail.
 
-```typescript
-@Entity('companies')
-export class Company {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+DELETE party means archive. Default lists hide archived parties; existing biltys may retain unchanged archived references, issue, edit and print. Creating a bilty or changing a reference to an archived party fails. Cross-company and wrong-kind references always fail. Party kind cannot change. Saved party edits never rewrite bilty snapshots.
 
-  @Column()
-  name: string;
+Bilty edits use PUT full replacement, never PATCH. Request {expectedVersion, data, reason}; every BiltyData field and nested field must be present, using null/empty strings/arrays where appropriate. Create accepts {data} with draft defaults. Issue accepts {expectedVersion}; cancel accepts {expectedVersion, reason}. Stale mutation returns 409; invalid body 400; missing authentication 401; denied membership/admin 403; absent/cross-company resources 404. Existing issued retry semantics remain idempotent. History and print projection are authenticated; print returns JSON, not a PDF. Lists use bounded limit (1–100) and offset (0–100000) with stable ordering; this slice does not promise cursor pagination.
 
-  // Print profile fields matching CompanySnapshot
-  @Column({ type: 'text', default: '' })
-  address: string;
+## HTTP routes
 
-  @Column({ default: '' })
-  gstin: string;
+- Public: GET /health; GET /auth/google?invite=...; GET /auth/google/callback; GET /invites/verify/:token; POST /auth/refresh (cookie + Origin).
+- Authenticated: GET /auth/me; POST /auth/onboard; POST /auth/logout; POST /auth/logout-all (logout also requires Origin).
+- Active member: GET /company; POST/GET /parties; GET/PATCH/DELETE /parties/:id; POST/GET /biltys; GET/PUT /biltys/:id; POST /biltys/:id/issue; POST /biltys/:id/cancel; GET /biltys/:id/history; GET /biltys/:id/print.
+- Admin: PATCH /company; GET /company/members; DELETE /company/members/:id (user ID); POST/GET /invites; DELETE /invites/:id.
 
-  @Column({ default: '' })
-  pan: string;
+## Verification and runtime
 
-  @Column({ default: '' })
-  phone: string;
+Docker PostgreSQL remains the default. pnpm test:docker creates an isolated database; integration files run serially because each resets its schema. Test foundation-data migration preservation, OAuth state replay/browser binding/nonce/verified email, signup/onboarding races, invitation races and tenant mismatch, refresh replay/concurrency/expiry, immediate session/member revocation, last-admin protection, archived party references, full PUT validation, stale versions and authenticated HTTP tenant isolation. No real Google account or dev database is used by automated tests.
 
-  @Column({ default: '' })
-  email: string;
-
-  @Column({ nullable: true })
-  logoUrl: string | null;
-
-  @Column({ default: '#1a73e8' })
-  primaryColor: string;
-
-  @Column({ default: '#4285f4' })
-  accentColor: string;
-
-  @Column({ type: 'text', default: '' })
-  bankDetails: string;
-
-  @Column({ default: '' })
-  jurisdiction: string;
-
-  @Column({ type: 'text', default: '' })
-  carriageTerms: string;
-
-  @Column({ type: 'text', default: '' })
-  demurrageTerms: string;
-
-  @Column({ default: 'BLT' })
-  biltyNumberPrefix: string;
-
-  @Column({ default: 1 })
-  biltyNumberCounter: number;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-}
-```
-
-### Membership
-
-```typescript
-@Entity('memberships')
-@Unique(['userId', 'companyId'])
-export class Membership {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column('uuid')
-  userId: string;
-
-  @ManyToOne(() => User, (u) => u.memberships)
-  @JoinColumn({ name: 'userId' })
-  user: User;
-
-  @Column('uuid')
-  companyId: string;
-
-  @ManyToOne(() => Company)
-  @JoinColumn({ name: 'companyId' })
-  company: Company;
-
-  @Column({ type: 'enum', enum: ['admin', 'employee'] })
-  role: 'admin' | 'employee';
-
-  @Column({ default: true })
-  isActive: boolean;
-
-  @CreateDateColumn()
-  joinedAt: Date;
-
-  @Column({ nullable: true })
-  revokedAt: Date | null;
-}
-```
-
-### Session
-
-```typescript
-@Entity('sessions')
-export class Session {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column('uuid')
-  userId: string;
-
-  @ManyToOne(() => User, (u) => u.sessions)
-  @JoinColumn({ name: 'userId' })
-  user: User;
-
-  @Column()
-  tokenHash: string;              // SHA-256 of refresh token
-
-  @Column({ nullable: true })
-  deviceInfo: string | null;
-
-  @Column()
-  expiresAt: Date;
-
-  @Column({ default: false })
-  isRevoked: boolean;
-
-  @CreateDateColumn()
-  createdAt: Date;
-}
-```
-
-### Invite
-
-```typescript
-@Entity('invites')
-export class Invite {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column('uuid')
-  companyId: string;
-
-  @ManyToOne(() => Company)
-  @JoinColumn({ name: 'companyId' })
-  company: Company;
-
-  @Column()
-  email: string;                  // Normalized lowercase
-
-  @Column({ type: 'enum', enum: ['admin', 'employee'] })
-  role: 'admin' | 'employee';
-
-  @Column()
-  tokenHash: string;              // SHA-256 of invite token
-
-  @Column({ type: 'enum', enum: ['pending', 'accepted', 'expired', 'revoked'] })
-  status: 'pending' | 'accepted' | 'expired' | 'revoked';
-
-  @Column()
-  expiresAt: Date;                // 7 days from creation
-
-  @Column('uuid')
-  invitedById: string;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @Column({ nullable: true })
-  acceptedAt: Date | null;
-}
-```
-
-### Party (Consignor/Consignee)
-
-```typescript
-@Entity('parties')
-export class Party {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column('uuid')
-  companyId: string;
-
-  @ManyToOne(() => Company)
-  @JoinColumn({ name: 'companyId' })
-  company: Company;
-
-  @Column({ type: 'enum', enum: ['consignor', 'consignee'] })
-  kind: 'consignor' | 'consignee';
-
-  @Column()
-  name: string;
-
-  @Column({ type: 'text', default: '' })
-  address: string;
-
-  @Column({ default: '' })
-  gstin: string;
-
-  @Column({ default: '' })
-  phone: string;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-}
-```
-
-## Auth Flow
-
-### OAuth Flow
-
-1. User clicks "Sign in with Google" → `GET /auth/google`
-2. Backend redirects to Google OAuth consent
-3. Google redirects to `GET /auth/google/callback?code=...`
-4. Backend exchanges code for profile, then:
-   - If user exists by googleId: lookup active membership
-   - If invite token provided: verify email match, create user + membership
-   - If no invite and new user: create user + company + membership (self-serve)
-5. Create session, mint tokens, redirect to frontend
-
-### Invite Flow
-
-1. Admin: `POST /invites { email, role }` → returns invite link
-2. Invitee opens link, clicks "Sign in with Google"
-3. OAuth callback verifies `invite.email === oauth.email` (normalized)
-4. On match: create user + membership, mark invite accepted
-5. On mismatch: reject with error
-
-### Token Strategy
-
-**Access Token (JWT, HS256, 15 min):**
-```typescript
-interface JwtPayload {
-  sub: string;        // userId
-  cid: string;        // companyId
-  role: 'admin' | 'employee';
-  iat: number;
-  exp: number;
-}
-```
-
-**Refresh Token (opaque, 7 days):**
-- 32 random bytes, base64url encoded
-- Stored as SHA-256 hash in sessions table
-- httpOnly cookie
-
-## HTTP Endpoints
-
-### Auth (`/auth`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/auth/google` | Public | Initiate OAuth |
-| GET | `/auth/google/callback` | Public | Handle callback |
-| POST | `/auth/refresh` | Public | Refresh access token |
-| POST | `/auth/logout` | JWT | Revoke current session |
-| POST | `/auth/logout-all` | JWT | Revoke all sessions |
-| GET | `/auth/me` | JWT | Get current user |
-
-### Invites (`/invites`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/invites` | Admin | Create invite |
-| GET | `/invites` | Admin | List invites |
-| DELETE | `/invites/:id` | Admin | Revoke invite |
-| GET | `/invites/verify/:token` | Public | Verify token |
-
-### Company (`/company`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/company` | JWT | Get company |
-| PATCH | `/company` | Admin | Update company |
-| GET | `/company/members` | Admin | List members |
-| DELETE | `/company/members/:id` | Admin | Revoke member |
-
-### Parties (`/parties`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/parties` | JWT | Create party |
-| GET | `/parties` | JWT | List parties |
-| GET | `/parties/:id` | JWT | Get party |
-| PATCH | `/parties/:id` | JWT | Update party |
-| DELETE | `/parties/:id` | JWT | Delete party |
-
-### Biltys (`/biltys`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/biltys` | JWT | Create draft |
-| GET | `/biltys` | JWT | List biltys |
-| GET | `/biltys/:id` | JWT | Get bilty |
-| PATCH | `/biltys/:id` | JWT | Edit bilty |
-| POST | `/biltys/:id/issue` | JWT | Issue bilty |
-| POST | `/biltys/:id/cancel` | JWT | Cancel bilty |
-| GET | `/biltys/:id/print` | JWT | Print projection |
-
-## Module Structure
-
-```
-apps/api/src/
-├── main.ts
-├── app.module.ts
-├── common/
-│   ├── filters/http-exception.filter.ts
-│   └── interceptors/transform.interceptor.ts
-├── config/config.module.ts
-├── database/
-│   └── migrations/
-│       └── 1790000000001-AuthEntities.ts
-└── modules/
-    ├── auth/
-    │   ├── auth.module.ts
-    │   ├── auth.controller.ts
-    │   ├── auth.service.ts
-    │   ├── strategies/{google,jwt}.strategy.ts
-    │   ├── guards/{jwt-auth,roles}.guard.ts
-    │   └── decorators/{public,roles,current-user}.decorator.ts
-    ├── user/
-    │   ├── user.module.ts
-    │   ├── user.service.ts
-    │   └── entities/{user,membership,session,invite}.entity.ts
-    ├── company/
-    │   ├── company.module.ts
-    │   ├── company.controller.ts
-    │   ├── company.service.ts
-    │   └── entities/company.entity.ts
-    ├── party/
-    │   ├── party.module.ts
-    │   ├── party.controller.ts
-    │   ├── party.service.ts
-    │   └── entities/party.entity.ts
-    └── bilty/
-        ├── bilty.controller.ts     # NEW
-        └── ... (existing files)
-```
-
-## Security Requirements
-
-| Requirement | Implementation |
-|-------------|----------------|
-| No request-body companyId trust | JWT payload provides companyId |
-| Active membership check | JwtAuthGuard verifies isActive |
-| Email exact match on invite | Normalized comparison in callback |
-| Hashed tokens | SHA-256 for refresh and invite tokens |
-| Single-use invites | Atomic status update on accept |
-| Revocable sessions | isRevoked flag checked on refresh |
-| Scoped queries | All queries filter by companyId |
-| Party ownership | Party queries include companyId |
-
-## Environment Variables
-
-```bash
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
-JWT_SECRET=
-JWT_EXPIRES_IN=15m
-REFRESH_TOKEN_EXPIRES_IN=7d
-FRONTEND_URL=http://localhost:3001
-DATABASE_URL=
-```
-
-## Testing
-
-- Unit tests: existing domain tests remain unchanged
-- Integration tests: OAuth flows, invite acceptance, token refresh, membership checks, CRUD operations
-- Denial tests: wrong company, revoked membership, expired tokens, email mismatch
-- Run via `pnpm test:docker`
-
-## Out of Scope
-
-- Email sending for invites (V1: manual link sharing)
-- Multi-company membership (one company per user for V1)
-- Platform admin role (separate from company admin)
-- Password/magic-link auth (Google OAuth only)
+Docker Compose runs postgres, an explicit migration job and the API. Startup never synchronizes or implicitly migrates schema. Runtime settings: DATABASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL, FRONTEND_URL, JWT_SECRET, NODE_ENV, PORT. See .env.example and README for commands. Production deployment, frontend login screens and live Google consent verification remain operational follow-ups.

@@ -5,3 +5,10 @@
 .env.*
 *.log
 coverage
+
+**/.next
+**/.next-e2e
+**/test-results
+**/playwright-report
+
+**/*.tsbuildinfo
