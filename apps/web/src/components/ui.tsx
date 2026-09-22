@@ -29,6 +29,23 @@ export function Loading({ text = 'Loading…' }: { text?: string }) {
     </div>
   );
 }
+export function Skeleton({
+  width,
+  height = 16,
+  className = '',
+}: {
+  width?: number | string;
+  height?: number | string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`skeleton ${className}`}
+      style={{ display: 'inline-block', width, height }}
+      aria-hidden
+    />
+  );
+}
 export function ErrorNotice({ message }: { message?: string | null }) {
   return message ? (
     <div className="notice error" role="alert">

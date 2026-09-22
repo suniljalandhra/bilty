@@ -75,14 +75,30 @@ tbody tr:hover { background: #111c2d; }
 .badge.cancelled, .badge.revoked { background: #46212a; color: #ff9b9b; border-color: #783746; }
 .badge.consignor { background: #1a2448; color: #8fa8e6; border-color: #3a4d6a; }
 .badge.consignee { background: #2a1e3d; color: #b89dda; border-color: #4a3660; }
-.notice { background: #142b42; border-color: #265b7c; color: #a9eafa; }
-.notice.error { background: #421e2a; border-color: #793846; color: #ffabab; }
-.empty { background: var(--surface); border-color: var(--line); }
-.empty-icon { color: var(--blue); }
-.loading { color: var(--muted); }
-.spinner { border-color: #2a3a55; border-top-color: var(--blue); }
-.dialog::backdrop { background: #02050bcc; }
-.dialog p { color: var(--muted); }
+/* Notices */
+.notice { background: #0d1e30; border-color: #1e4060; color: #8fd4f0; }
+.notice a { color: #a8e4ff; }
+.notice.error { background: #2a1520; border-color: #4a2530; color: #ff9a9a; }
+.notice.error a { color: #ffb8b8; }
+/* Empty states */
+.empty { background: var(--surface); border-color: #1e2c42; border-radius: 8px; }
+.empty h2 { color: var(--ink); }
+.empty p { color: #7a8da5; }
+.empty-icon { background: #0d1524; border-color: #1e2c42; color: var(--blue); }
+/* Loading */
+.loading { color: #7a8da5; }
+.spinner { border-color: #1e2c42; border-top-color: var(--blue); }
+/* Skeleton loading */
+.skeleton { background: linear-gradient(90deg, #1e2c42 25%, #28364c 50%, #1e2c42 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.5s ease-in-out infinite; border-radius: 4px; }
+@keyframes skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+/* Dialog */
+.dialog { background: var(--surface); border-color: #1e2c42; box-shadow: 0 24px 80px #000000cc; }
+.dialog::backdrop { background: #020610e6; backdrop-filter: blur(4px); }
+.dialog h2 { color: var(--ink); }
+.dialog p { color: #9aa8bd; }
+.dialog-actions { border-color: #1e2c42; }
+.dialog .icon-button { color: #7a8da5; }
+.dialog .icon-button:hover { color: var(--ink); background: #1a2536; }
 .auth-page { background: var(--bg); }
 .auth-wrap > .brand { color: var(--ink); }
 .auth-card { background: var(--surface); border-color: #1e2c42; box-shadow: 0 16px 50px #000000aa; }
