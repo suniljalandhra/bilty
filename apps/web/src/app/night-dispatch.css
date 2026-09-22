@@ -73,6 +73,8 @@ tbody tr:hover { background: #15223a; }
 .auth-divider { color: #7d8ca4; }
 .auth-divider::before, .auth-divider::after { background: var(--line); }
 .logo-preview, .logo-placeholder { background: #0b1422; border-color: var(--line); }
+.invite-form, .created-link { background: #0d1524; border-color: var(--line); }
+.contact-address { color: var(--muted); }
 .number-preview { border-color: var(--blue); }
 .number-preview > strong { color: var(--blue); }
 .audit-list > li:before { background: #30425d; }
