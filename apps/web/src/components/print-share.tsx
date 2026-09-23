@@ -5,8 +5,8 @@ import { api, apiResponse, errorMessage, json } from '@/lib/api';
 import { dateTime, label, type Share } from '@/lib/model';
 import { Badge, ErrorNotice, Notice, Section, Select } from './ui';
 export function PrintShare({ record }: { record: BiltyRecord }) {
-  const [format, setFormat] = useState<'a4' | 'thermal'>('a4'),
-    [copy, setCopy] = useState('consignor'),
+  const format = 'a4';
+  const [copy, setCopy] = useState('consignor'),
     [hours, setHours] = useState(24),
     [busy, setBusy] = useState(''),
     [error, setError] = useState(''),
@@ -89,18 +89,13 @@ export function PrintShare({ record }: { record: BiltyRecord }) {
     }
   }
   return (
-    <Section title="Print & share" description="Choose the format and the copy for your recipient.">
+    <Section
+      title="Print & share"
+      description="A4 landscape PDF. Choose the copy for your recipient."
+    >
       <ErrorNotice message={error} />
       {message && <Notice>{message}</Notice>}
       <div className="form-grid">
-        <Select
-          label="Paper format"
-          value={format}
-          onChange={(e) => setFormat(e.target.value as 'a4' | 'thermal')}
-        >
-          <option value="a4">A4 document</option>
-          <option value="thermal">80 mm thermal</option>
-        </Select>
         <Select label="Document copy" value={copy} onChange={(e) => setCopy(e.target.value)}>
           {['consignor', 'consignee', 'driver', 'office'].map((value) => (
             <option key={value} value={value}>
@@ -201,8 +196,7 @@ export function PrintShare({ record }: { record: BiltyRecord }) {
                   <li key={share.id}>
                     <div>
                       <strong>
-                        Version {share.version} · {share.format === 'a4' ? 'A4' : '80 mm'} ·{' '}
-                        {label(share.copy)} copy
+                        Version {share.version} · A4 · {label(share.copy)} copy
                       </strong>
                       <span>Expires {dateTime(share.expiresAt)}</span>
                       <Badge

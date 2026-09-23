@@ -64,8 +64,10 @@ Automated tests substitute the external Google provider. The Next.js login, call
 
 ## PDFs and controlled sharing
 
-GET /biltys/:id/pdf accepts format=a4|thermal and copy=consignor|consignee|driver|office; it returns application/pdf. POST /biltys/:id/shares accepts {expiresInHours: 1..168, format, copy} and returns {id, url, expiresAt, version}. Only issued biltys can be shared. GET /biltys/:id/shares lists metadata; DELETE /biltys/:id/shares/:shareId revokes. Public GET /shared/:token returns the fixed shared PDF version until expiry/revocation/cancellation. PUBLIC_API_URL controls generated links and must be reachable by recipients. Localhost links are only usable on the same computer until a public deployment is configured.
+GET /biltys/:id/pdf accepts format=a4 (the default) and copy=consignor|consignee|driver|office; it returns application/pdf in A4 landscape. Thermal rendering is retired; new thermal requests are rejected, and existing thermal share links render their frozen data as A4. POST /biltys/:id/shares accepts {expiresInHours: 1..168, format, copy} and returns {id, url, expiresAt, version}. Only issued biltys can be shared. GET /biltys/:id/shares lists metadata; DELETE /biltys/:id/shares/:shareId revokes. Public GET /shared/:token returns the fixed shared PDF version until expiry/revocation/cancellation. PUBLIC_API_URL controls generated links and must be reachable by recipients. Localhost links are only usable on the same computer until a public deployment is configured.
 
 Company profile logoUrl accepts a validated inline PNG/JPEG up to 200000 encoded characters and 2048px per dimension. The UI accepts files up to 120KB. PDF rendering never fetches remote URLs. Noto fonts are bundled under the SIL Open Font License; English and Devanagari runs are supported.
 
 The local development API can start with blank Google credentials and reports googleConfigured=false from /health; sign-in fails closed with 503 until configured. Production refuses to start without credentials.
+
+Company print profiles accept `biltyLayout`: `classic-grid` (default), `route-focus`, `freight-ledger`, `dispatch-sheet`, or `modern-panels`. Settings affect drafts and future issues. Issued biltys and share links use their frozen company layout, logo and colours. Historic profiles and snapshots without a layout render as Classic Grid.

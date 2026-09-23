@@ -1,12 +1,14 @@
 import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
-import type { BiltyRecord, CompanySnapshot } from '@bilty/shared-types';
+import type { BiltyRecord, BiltyLayoutId, CompanySnapshot } from '@bilty/shared-types';
 import { z } from 'zod';
 import { printData } from '../bilty/domain';
 import { validInlineLogo } from '../company/logo';
+import { renderPanelLayout } from './a4-panels';
+import { DEFAULT_LAYOUT } from '../bilty/validation';
 
 export const printOptions = z.strictObject({
-  format: z.enum(['a4', 'thermal']).default('a4'),
+  format: z.literal('a4').default('a4'),
   copy: z.enum(['consignor', 'consignee', 'driver', 'office']).default('office'),
 });
 export type PrintOptions = z.infer<typeof printOptions>;
@@ -15,6 +17,8 @@ const money = (v: number | null) => (v === null ? '' : `${(v / 100).toFixed(2)}`
 const clean = (v: string) => v.replace(/[—–]/g, '-');
 
 type LayoutBox = { name: string; top: number; bottom: number };
+
+export { LAYOUT_META } from '@bilty/shared-types';
 
 export function a4GridLayout(contentWidth: number) {
   const paymentWidth = 135;
@@ -63,17 +67,27 @@ export async function renderBiltyPdf(
   options: PrintOptions,
   draftCompany?: CompanySnapshot,
 ): Promise<Buffer> {
+  const c = record.companySnapshot ?? draftCompany;
+  // Select layout based on frozen company snapshot or draft company
+  const layoutId: BiltyLayoutId = c?.biltyLayout ?? DEFAULT_LAYOUT;
+
+  if (layoutId !== 'classic-grid') {
+    return renderPanelLayout(record, options, layoutId, draftCompany);
+  }
+  return renderClassicGridLayout(record, options, draftCompany);
+}
+
+/** Classic Grid Layout - the original default layout with accent rule enhancement */
+async function renderClassicGridLayout(
+  record: BiltyRecord,
+  options: PrintOptions,
+  draftCompany?: CompanySnapshot,
+): Promise<Buffer> {
   const b = printData(record),
     d = b.data,
-    c = b.companySnapshot ?? draftCompany,
-    thermal = options.format === 'thermal';
+    c = b.companySnapshot ?? draftCompany;
 
-  // For thermal, use simpler layout (keep existing logic)
-  if (thermal) {
-    return renderThermalPdf(record, options, draftCompany);
-  }
-
-  const margin = 20;
+  const margin = 24;
   const pdf = new PDFDocument({
     size: 'A4',
     layout: 'landscape',
@@ -99,11 +113,12 @@ export async function renderBiltyPdf(
   const pageWidth = pdf.page.width;
   const pageHeight = pdf.page.height;
   const contentWidth = pageWidth - 2 * margin;
-  const layout = a4Layout();
-  const grid = a4GridLayout(contentWidth);
   const primaryColor = /^#[a-fA-F0-9]{6}$/.test(c?.primaryColor ?? '')
     ? c!.primaryColor
     : '#1a3a6e';
+  const accentColor = /^#[a-fA-F0-9]{6}$/.test(c?.accentColor ?? '') ? c!.accentColor : '#2e7d32';
+  const lightBg = '#f8f9fa';
+  const borderColor = '#dee2e6';
 
   // Helper functions
   const runs = (text: string) =>
@@ -120,7 +135,7 @@ export async function renderBiltyPdf(
     y: number,
     fontSize: number,
     bold = false,
-    color = '#000000',
+    color = '#333333',
   ) {
     pdf.fillColor(color);
     let xPos = x;
@@ -137,7 +152,7 @@ export async function renderBiltyPdf(
     width: number,
     fontSize: number,
     bold = false,
-    color = '#000000',
+    color = '#333333',
     height?: number,
   ) {
     pdf
@@ -152,581 +167,379 @@ export async function renderBiltyPdf(
     });
   }
 
-  function drawBox(x: number, y: number, w: number, h: number, fill?: string) {
+  function drawBox(x: number, y: number, w: number, h: number, fill?: string, strokeCol?: string) {
     if (fill) {
       pdf.rect(x, y, w, h).fill(fill);
     }
-    pdf.strokeColor('#000000').lineWidth(0.5).rect(x, y, w, h).stroke();
+    pdf
+      .strokeColor(strokeCol ?? borderColor)
+      .lineWidth(0.75)
+      .rect(x, y, w, h)
+      .stroke();
   }
 
-  function drawCheckbox(x: number, y: number, checked: boolean, label: string, fontSize = 8) {
-    pdf.strokeColor('#000000').lineWidth(0.5).rect(x, y, 10, 10).stroke();
+  function drawSectionBox(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    title?: string,
+    titleBg?: string,
+  ) {
+    // Draw main box with thicker border
+    pdf.rect(x, y, w, h).fill('#ffffff');
+    pdf.strokeColor(borderColor).lineWidth(1).rect(x, y, w, h).stroke();
+    if (title) {
+      const titleH = 18;
+      pdf.rect(x, y, w, titleH).fill(titleBg ?? lightBg);
+      pdf.strokeColor(borderColor).lineWidth(0.5).rect(x, y, w, titleH).stroke();
+      drawText(title.toUpperCase(), x + 8, y + 4, 9, true, primaryColor);
+    }
+  }
+
+  function drawCheckbox(x: number, y: number, checked: boolean, label: string, fontSize = 9) {
+    const boxSize = 12;
+    pdf.strokeColor(borderColor).lineWidth(1).rect(x, y, boxSize, boxSize).stroke();
     if (checked) {
+      pdf.rect(x + 2, y + 2, boxSize - 4, boxSize - 4).fill(accentColor);
       pdf
-        .strokeColor('#000000')
-        .lineWidth(1.2)
-        .moveTo(x + 2, y + 5)
-        .lineTo(x + 4.2, y + 8)
-        .lineTo(x + 8.5, y + 2)
+        .strokeColor('#ffffff')
+        .lineWidth(1.5)
+        .moveTo(x + 3, y + 6)
+        .lineTo(x + 5, y + 9)
+        .lineTo(x + 9, y + 3)
         .stroke();
     }
-    drawText(label, x + 14, y + 1, fontSize, false, '#000000');
+    drawText(label, x + boxSize + 6, y + 1, fontSize, false, '#444444');
+  }
+
+  function drawLabel(text: string, x: number, y: number, fontSize = 8) {
+    drawText(text, x, y, fontSize, false, '#666666');
+  }
+
+  function drawValue(text: string, x: number, y: number, fontSize = 10, bold = true) {
+    drawText(text || '-', x, y, fontSize, bold, '#222222');
   }
 
   let y = margin;
 
   // ============ HEADER SECTION ============
-  // Top decorative line
-  pdf
-    .strokeColor(primaryColor)
-    .lineWidth(2)
-    .moveTo(margin, y)
-    .lineTo(pageWidth - margin, y)
-    .stroke();
-  y += 5;
+  // Top accent bar
+  pdf.rect(margin, y, contentWidth, 6).fill(primaryColor);
+  pdf.rect(margin, y + 6, contentWidth, 2).fill(accentColor);
+  y += 12;
 
-  // Hindi text and jurisdiction
-  drawText('श्री गणेशाय नमः', margin + 5, y, 10, false, '#000000');
-  const jurisdiction = (c?.jurisdiction || 'Delhi').replace(/\s+jurisdiction$/i, '');
-  const jurisdictionText = `"Subject to ${jurisdiction} Jurisdiction"`;
-  pdf.font('Body').fontSize(8);
-  const jurisdictionWidth = pdf.widthOfString(jurisdictionText);
-  drawText(
-    jurisdictionText,
-    margin + (contentWidth - jurisdictionWidth) / 2,
-    y + 2,
-    8,
-    false,
-    '#000000',
-  );
+  // Header background
+  const headerHeight = 70;
+  pdf.rect(margin, y, contentWidth, headerHeight).fill('#ffffff');
 
-  // Copy type on right
+  // Copy type badge (top right)
   const copyText = `${options.copy.toUpperCase()} COPY`;
-  pdf.font('Bold').fontSize(9);
-  const copyWidth = pdf.widthOfString(copyText);
-  drawText(copyText, pageWidth - margin - copyWidth, y, 9, true, '#000000');
-  y += 14;
+  pdf.font('Bold').fontSize(10);
+  const copyWidth = pdf.widthOfString(copyText) + 16;
+  const badgeX = pageWidth - margin - copyWidth - 8;
+  pdf.rect(badgeX, y + 4, copyWidth, 22).fill(primaryColor);
+  drawText(copyText, badgeX + 8, y + 9, 10, true, '#ffffff');
 
-  // Company contact info on right side
-  const contactX = pageWidth - margin - 150;
-  if (c?.phone) {
-    drawText(`Mob.: ${c.phone}`, contactX, y, 7, false, '#000000');
-  }
-  y += 8;
-  if (c?.email) {
-    drawText(`E-mail: ${c.email}`, contactX, y, 7, false, '#000000');
-  }
+  // Hindi blessing (top left)
+  drawText('॥ श्री गणेशाय नमः ॥', margin + 8, y + 6, 11, false, '#666666');
+
+  // Jurisdiction (center top)
+  const jurisdiction = (c?.jurisdiction || 'Delhi').replace(/\s+jurisdiction$/i, '');
+  const jurisdictionText = `Subject to ${jurisdiction} Jurisdiction`;
+  pdf.font('Body').fontSize(9);
+  const jurisdictionWidth = pdf.widthOfString(jurisdictionText);
+  drawText(jurisdictionText, margin + (contentWidth - jurisdictionWidth) / 2, y + 8, 9, false, '#666666');
 
   // Company Logo and Name
-  let logoX = margin + 5;
-  const logoY = margin + 18;
+  let logoX = margin + 10;
+  const logoY = y + 24;
 
   if (c?.logoUrl?.startsWith('data:') && validInlineLogo(c.logoUrl)) {
     try {
-      pdf.image(Buffer.from(c.logoUrl.split(',')[1]!, 'base64'), logoX, logoY, { height: 35 });
-      logoX += 45;
+      pdf.image(Buffer.from(c.logoUrl.split(',')[1]!, 'base64'), logoX, logoY, { height: 40 });
+      logoX += 50;
     } catch {
       // Skip logo if invalid
     }
   }
 
   // Company name - large and prominent
-  drawText(c?.name?.toUpperCase() || 'TRANSPORT COMPANY', logoX, logoY + 5, 22, true, primaryColor);
-  y = logoY + 42;
+  const companyName = c?.name?.toUpperCase() || 'TRANSPORT COMPANY';
+  drawText(companyName, logoX, logoY + 2, 24, true, primaryColor);
 
-  // Company address
-  if (c?.address) {
-    drawText(c.address, margin + 5, y, 8, false, '#000000');
+  // Company address and contact below name
+  const contactY = logoY + 28;
+  const contactParts: string[] = [];
+  if (c?.address) contactParts.push(c.address);
+  if (contactParts.length > 0) {
+    drawTextWrap(contactParts.join(' | '), logoX, contactY, 400, 9, false, '#555555');
   }
-  y += 12;
 
-  // Horizontal line
-  pdf
-    .strokeColor('#000000')
-    .lineWidth(0.5)
-    .moveTo(margin, y)
-    .lineTo(pageWidth - margin, y)
-    .stroke();
-  y += 3;
+  // Contact info on right side
+  const rightInfoX = pageWidth - margin - 180;
+  if (c?.phone) {
+    drawLabel('Phone:', rightInfoX, logoY + 2);
+    drawValue(c.phone, rightInfoX + 45, logoY + 2, 10, false);
+  }
+  if (c?.email) {
+    drawLabel('Email:', rightInfoX, logoY + 14);
+    drawValue(c.email, rightInfoX + 45, logoY + 14, 9, false);
+  }
+  if (c?.gstin) {
+    drawLabel('GSTIN:', rightInfoX, logoY + 26);
+    drawValue(c.gstin, rightInfoX + 45, logoY + 26, 9, true);
+  }
 
-  // ============ MAIN CONTENT GRID ============
-  const gridTop = layout.identity.top;
-  y = gridTop;
-  const leftColWidth = 240;
-  const centerColWidth = 250;
-  const rightColWidth = contentWidth - leftColWidth - centerColWidth;
-  const rightColX = margin + leftColWidth + centerColWidth;
+  y += headerHeight + 4;
 
-  // Row 1: GSTIN, Transit Risk, Bilty No section
-  // GSTIN Box (left)
-  drawBox(margin, y, leftColWidth, 20);
-  drawText(`GSTIN No. ${c?.gstin || ''}`, margin + 3, y + 5, 8, true, '#000000');
+  // ============ BILTY NUMBER ROW ============
+  const biltyRowHeight = 45;
+  const biltyBoxWidth = 220;
+  const dateBoxWidth = contentWidth - biltyBoxWidth - 8;
 
-  // Transit Risk (center) - spans full width initially
-  const transitRiskX = margin + leftColWidth;
-  drawBox(transitRiskX, y, centerColWidth + rightColWidth, 50);
-  const transitText =
-    "Transit Risk: All goods are carried at owner's risk. The Consignor/Consignee must ensure that the goods are insured by an insurance company. We shall not be held be responsible for any kind of loss, damage, theft, leakage, delay due to any reason. It is furthermade clear that any damage or loss to nature disaster or any act of God, which is beyond the control of the company.";
-  drawTextWrap(
-    transitText,
-    transitRiskX + 3,
-    y + 3,
-    centerColWidth + rightColWidth - 6,
-    6,
-    false,
-    '#000000',
-  );
+  // Bilty Number Box (prominent, left side)
+  pdf.rect(margin, y, biltyBoxWidth, biltyRowHeight).fill(lightBg);
+  pdf.strokeColor(primaryColor).lineWidth(2).rect(margin, y, biltyBoxWidth, biltyRowHeight).stroke();
+  drawLabel('BILTY / LR NO.', margin + 10, y + 5, 9);
+  const biltyNumber = b.number || 'DRAFT';
+  drawText(biltyNumber, margin + 10, y + 18, 18, true, primaryColor);
 
-  // Bilty No Box (right side, prominent)
-  const biltyBoxX = rightColX;
-  const biltyBoxY = y + 52;
-  drawBox(biltyBoxX, biltyBoxY, rightColWidth, 35);
-  drawText('Bilty No. :', biltyBoxX + 5, biltyBoxY + 5, 9, true, '#000000');
-  drawText(b.number || '____', biltyBoxX + 55, biltyBoxY + 3, 16, true, primaryColor);
-  drawText('Date :', biltyBoxX + 5, biltyBoxY + 22, 8, false, '#000000');
+  // Date Box (right of bilty number)
+  const dateBoxX = margin + biltyBoxWidth + 8;
+  pdf.rect(dateBoxX, y, dateBoxWidth, biltyRowHeight).fill('#ffffff');
+  pdf.strokeColor(borderColor).lineWidth(1).rect(dateBoxX, y, dateBoxWidth, biltyRowHeight).stroke();
+  drawLabel('Date:', dateBoxX + 10, y + 8, 9);
   const dateStr = b.issuedAt
-    ? new Date(b.issuedAt).toLocaleDateString('en-IN')
-    : b.createdAt.slice(0, 10);
-  drawText(dateStr, biltyBoxX + 35, biltyBoxY + 22, 9, true, '#000000');
+    ? new Date(b.issuedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    : new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  drawValue(dateStr, dateBoxX + 50, y + 6, 11);
 
-  y = layout.details.top;
-
-  // Row 2: Delivery Mode, Insurance, Vehicle/Form info
-  const row2Y = y;
-
-  // Delivery Mode section
-  drawBox(margin, row2Y, leftColWidth, 52);
-  drawText('DELIVERY MODE', margin + 5, row2Y + 3, 7, true, '#000000');
-  drawCheckbox(margin + 8, row2Y + 15, d.deliveryMode === 'door', 'DOOR DELIVERY', 8);
-  drawCheckbox(margin + 8, row2Y + 30, d.deliveryMode === 'godown', 'GODOWN DELIVERY', 8);
-
-  // Person liable for service tax
-  drawBox(margin, row2Y + 52, leftColWidth, 43);
-  drawText('Person Liable for SERVICE TAX', margin + 5, row2Y + 55, 7, true, '#000000');
-  drawCheckbox(margin + 8, row2Y + 67, d.gstPayableBy === 'consignor', 'Consignor', 7);
-  drawCheckbox(margin + 80, row2Y + 67, d.gstPayableBy === 'consignee', 'Consignee', 7);
-  drawCheckbox(margin + 8, row2Y + 81, d.gstPayableBy === 'agency', 'Goods Tpt. Agency', 7);
-
-  // Insurance section (center)
-  const insuranceX = margin + leftColWidth;
-  drawBox(insuranceX, row2Y, centerColWidth, 95);
-  drawText('I N S U R A N C E', insuranceX + 50, row2Y + 5, 8, true, '#000000');
-  drawText('The Consignor has Stated that :', insuranceX + 5, row2Y + 18, 7, true, '#000000');
-  drawCheckbox(
-    insuranceX + 10,
-    row2Y + 32,
-    d.insurance.status === 'not-insured',
-    'he has not insured the consignment',
-    7,
-  );
-  drawText('OR', insuranceX + 80, row2Y + 45, 7, false, '#000000');
-  drawCheckbox(
-    insuranceX + 10,
-    row2Y + 55,
-    d.insurance.status === 'insured',
-    'he has insured the consignment',
-    7,
-  );
-
-  if (d.insurance.status === 'insured') {
-    drawText(`Company: ${d.insurance.company}`, insuranceX + 10, row2Y + 68, 7, false, '#000000');
-    drawText(
-      `Policy No: ${d.insurance.policyNumber}`,
-      insuranceX + 10,
-      row2Y + 78,
-      7,
-      false,
-      '#000000',
-    );
+  // Vehicle info in date box area
+  drawLabel('Vehicle:', dateBoxX + 150, y + 8, 9);
+  drawValue(d.vehicleNumber || '-', dateBoxX + 200, y + 6, 11);
+  drawLabel('Driver:', dateBoxX + 10, y + 26, 9);
+  drawValue(d.driverName || '-', dateBoxX + 50, y + 24, 10, false);
+  if (d.driverPhone) {
+    drawLabel('Ph:', dateBoxX + 200, y + 26, 8);
+    drawValue(d.driverPhone, dateBoxX + 220, y + 24, 9, false);
   }
 
-  // Right column: PAN, Vehicle, Invoice info
-  drawBox(rightColX, row2Y, rightColWidth, 18);
-  drawText(`PAN No. : ${c?.pan || ''}`, rightColX + 5, row2Y + 5, 8, true, '#000000');
+  y += biltyRowHeight + 6;
 
-  drawBox(rightColX, row2Y + 18, rightColWidth, 18);
-  drawText('Vehicle No. :', rightColX + 5, row2Y + 23, 7, false, '#000000');
-  drawText(d.vehicleNumber || '', rightColX + 55, row2Y + 23, 8, true, '#000000');
+  // ============ PARTIES ROW (Consignor, FROM, Consignee, TO) ============
+  const partyRowHeight = 70;
+  const partyWidth = contentWidth * 0.38;
+  const routeWidth = contentWidth * 0.12 - 4;
 
-  // Demurrage notice
-  drawBox(rightColX, row2Y + 36, rightColWidth, 28);
-  const demurrageText =
-    c?.demurrageTerms ||
-    'Demurrage Chargeable after 7 days from today @ Rs. 5/- per day per Qtl. on weight charged';
-  drawTextWrap(
-    demurrageText,
-    rightColX + 3,
-    row2Y + 38,
-    rightColWidth - 6,
-    6,
-    false,
-    '#000000',
-    23,
-  );
-
-  // Mode of Packing / Invoice
-  drawBox(rightColX, row2Y + 64, rightColWidth, 31);
-  drawText('Mode of Packing', rightColX + 5, row2Y + 66, 7, false, '#000000');
-  drawText(d.packingType || '', rightColX + 70, row2Y + 66, 8, true, '#000000');
-  drawText('Invoice No.', rightColX + 5, row2Y + 77, 7, false, '#000000');
-  const firstInvoice = d.invoices[0];
-  if (firstInvoice) {
-    const invoiceNumbers = d.invoices.map((invoice) => invoice.number).join(', ');
-    drawTextWrap(
-      invoiceNumbers,
-      rightColX + 50,
-      row2Y + 77,
-      rightColWidth - 54,
-      7,
-      true,
-      '#000000',
-      15,
-    );
-    if (d.invoices.length === 1 && firstInvoice.declaredValuePaise) {
-      drawText(
-        `Value: ${money(firstInvoice.declaredValuePaise)}`,
-        rightColX + 5,
-        row2Y + 87,
-        7,
-        false,
-        '#000000',
-      );
-    }
-  }
-
-  y = layout.consignor.top;
-
-  // ============ CONSIGNOR / CONSIGNEE SECTION ============
-  const partyRowHeight = layout.consignor.bottom - layout.consignor.top;
-
-  // Consignor
-  drawBox(margin, y, grid.partyWidth, partyRowHeight);
-  drawText("Consignor's Name & Address", margin + 3, y + 2, 7, false, '#666666');
-  drawText(d.consignor.name || '', margin + 5, y + 12, 10, true, '#000000');
+  // Consignor Box
+  drawSectionBox(margin, y, partyWidth, partyRowHeight, 'Consignor (Sender)');
+  drawValue(d.consignor.name || '-', margin + 8, y + 22, 11);
   if (d.consignor.address) {
-    drawTextWrap(
-      d.consignor.address,
-      margin + 5,
-      y + 24,
-      grid.partyWidth - 10,
-      7,
-      false,
-      '#000000',
-      18,
-    );
+    drawTextWrap(d.consignor.address, margin + 8, y + 36, partyWidth - 16, 8, false, '#444444', 18);
   }
   if (d.consignor.gstin) {
-    drawText(`GSTIN: ${d.consignor.gstin}`, margin + 5, y + 36, 6, false, '#000000');
+    drawLabel('GSTIN:', margin + 8, y + 56, 8);
+    drawValue(d.consignor.gstin, margin + 48, y + 54, 8, false);
+  }
+  if (d.consignor.phone) {
+    drawLabel('Ph:', margin + partyWidth - 85, y + 56, 8);
+    drawValue(d.consignor.phone, margin + partyWidth - 65, y + 54, 8, false);
   }
 
-  // FROM / TO section
-  const fromToX = margin + grid.partyWidth;
-  const fromToWidth = grid.routeWidth;
-  drawBox(fromToX, y, fromToWidth, partyRowHeight);
-  drawText('FROM :', fromToX + 5, y + 5, 8, true, '#000000');
-  drawText(d.fromLocation || '', fromToX + 45, y + 4, 11, true, primaryColor);
+  // FROM Box (small, next to consignor)
+  const fromX = margin + partyWidth + 4;
+  pdf.rect(fromX, y, routeWidth, partyRowHeight).fill(lightBg);
+  pdf.strokeColor(accentColor).lineWidth(1.5).rect(fromX, y, routeWidth, partyRowHeight).stroke();
+  drawLabel('FROM', fromX + 8, y + 8, 8);
+  drawText(d.fromLocation || '-', fromX + 8, y + 24, 12, true, accentColor);
 
-  const partyMetaX = fromToX + fromToWidth;
-  drawBox(partyMetaX, y, grid.partyMetaWidth, partyRowHeight);
-  drawText("Consignor's S.T. No.", partyMetaX + 5, y + 5, 6, false, '#666666');
-  drawText('State:', partyMetaX + 5, y + 15, 6, false, '#666666');
-
-  y = layout.consignee.top;
-
-  // Consignee
-  drawBox(margin, y, grid.partyWidth, partyRowHeight);
-  drawText("Consignee Bank's Name & Address", margin + 3, y + 2, 7, false, '#666666');
-  drawText(d.consignee.name || '', margin + 5, y + 12, 10, true, '#000000');
+  // Consignee Box
+  const consigneeX = fromX + routeWidth + 4;
+  drawSectionBox(consigneeX, y, partyWidth, partyRowHeight, 'Consignee (Receiver)');
+  drawValue(d.consignee.name || '-', consigneeX + 8, y + 22, 11);
   if (d.consignee.address) {
-    drawTextWrap(
-      d.consignee.address,
-      margin + 5,
-      y + 24,
-      grid.partyWidth - 10,
-      7,
-      false,
-      '#000000',
-      18,
-    );
+    drawTextWrap(d.consignee.address, consigneeX + 8, y + 36, partyWidth - 16, 8, false, '#444444', 18);
   }
   if (d.consignee.gstin) {
-    drawText(`GSTIN: ${d.consignee.gstin}`, margin + 5, y + 36, 6, false, '#000000');
+    drawLabel('GSTIN:', consigneeX + 8, y + 56, 8);
+    drawValue(d.consignee.gstin, consigneeX + 48, y + 54, 8, false);
+  }
+  if (d.consignee.phone) {
+    drawLabel('Ph:', consigneeX + partyWidth - 85, y + 56, 8);
+    drawValue(d.consignee.phone, consigneeX + partyWidth - 65, y + 54, 8, false);
   }
 
-  // TO section
-  drawBox(fromToX, y, fromToWidth, partyRowHeight);
-  drawText('TO :', fromToX + 5, y + 5, 8, true, '#000000');
-  drawText(d.toLocation || '', fromToX + 30, y + 4, 11, true, primaryColor);
+  // TO Box (small, next to consignee)
+  const toX = consigneeX + partyWidth + 4;
+  pdf.rect(toX, y, routeWidth, partyRowHeight).fill(lightBg);
+  pdf.strokeColor(primaryColor).lineWidth(1.5).rect(toX, y, routeWidth, partyRowHeight).stroke();
+  drawLabel('TO', toX + 8, y + 8, 8);
+  drawText(d.toLocation || '-', toX + 8, y + 24, 12, true, primaryColor);
 
-  drawBox(partyMetaX, y, grid.partyMetaWidth, partyRowHeight);
-  drawText("Consignee's S.T. No.", partyMetaX + 5, y + 5, 6, false, '#666666');
-  drawText('State:', partyMetaX + 5, y + 15, 6, false, '#666666');
+  y += partyRowHeight + 6;
 
-  y = layout.goods.top;
+  // ============ OPTIONS ROW (Delivery, Payment, Insurance) ============
+  const optionsRowHeight = 45;
+  const col3Width = contentWidth / 3 - 5;
 
-  // ============ PACKAGES TABLE ============
-  const tableY = y;
-  const col1 = 52; // Packages
-  const col3 = 65; // Actual Weight
-  const col4 = 65; // Charge Weight
-  const col5 = 85; // Normal Rate
-  const col6 = 115; // Amount (Rs. P.)
-  const col2 = grid.tableWidth - col1 - col3 - col4 - col5 - col6; // Description
-  const tableHeight = layout.goods.bottom - layout.goods.top;
+  // Delivery Mode
+  drawSectionBox(margin, y, col3Width, optionsRowHeight, 'Delivery Mode');
+  drawCheckbox(margin + 10, y + 24, d.deliveryMode === 'door', 'Door Delivery');
+  drawCheckbox(margin + 120, y + 24, d.deliveryMode === 'godown', 'Godown Delivery');
 
-  // Table headers
-  drawBox(margin, tableY, col1, 20);
-  drawText('Packages', margin + 5, tableY + 6, 8, true, '#000000');
+  // Freight Type
+  const col2X = margin + col3Width + 8;
+  drawSectionBox(col2X, y, col3Width, optionsRowHeight, 'Payment Type');
+  drawCheckbox(col2X + 10, y + 24, d.freightType === 'to-pay', 'To Pay');
+  drawCheckbox(col2X + 80, y + 24, d.freightType === 'paid', 'Paid');
+  drawCheckbox(col2X + 140, y + 24, d.freightType === 'billed', 'To Bill');
 
-  drawBox(margin + col1, tableY, col2, 20);
-  drawText('DESCRIPTION (said to contain)', margin + col1 + 5, tableY + 6, 8, true, '#000000');
+  // Insurance
+  const col3X = col2X + col3Width + 8;
+  drawSectionBox(col3X, y, col3Width, optionsRowHeight, 'Insurance');
+  drawCheckbox(col3X + 10, y + 24, d.insurance.status === 'not-insured', 'Not Insured');
+  drawCheckbox(col3X + 110, y + 24, d.insurance.status === 'insured', 'Insured');
 
-  drawBox(margin + col1 + col2, tableY, col3 + col4, 10);
-  drawText('W E I G H T', margin + col1 + col2 + 20, tableY + 1, 7, true, '#000000');
-  drawBox(margin + col1 + col2, tableY + 10, col3, 10);
-  drawText('Actual', margin + col1 + col2 + 10, tableY + 12, 7, false, '#000000');
-  drawBox(margin + col1 + col2 + col3, tableY + 10, col4, 10);
-  drawText('Charge', margin + col1 + col2 + col3 + 8, tableY + 12, 7, false, '#000000');
+  y += optionsRowHeight + 6;
 
-  drawBox(margin + col1 + col2 + col3 + col4, tableY, col5, 20);
-  drawText('Normal', margin + col1 + col2 + col3 + col4 + 10, tableY + 2, 7, true, '#000000');
-  drawText('RATE', margin + col1 + col2 + col3 + col4 + 12, tableY + 10, 7, true, '#000000');
+  // ============ GOODS & CHARGES SECTION ============
+  const goodsChargesHeight = 105;
+  const goodsWidth = contentWidth * 0.62;
+  const chargesWidth = contentWidth - goodsWidth - 8;
 
-  drawBox(margin + col1 + col2 + col3 + col4 + col5, tableY, col6, 10);
-  drawText(
-    'Amount',
-    margin + col1 + col2 + col3 + col4 + col5 + 20,
-    tableY + 1,
-    7,
-    true,
-    '#000000',
-  );
-  drawBox(margin + col1 + col2 + col3 + col4 + col5, tableY + 10, col6 / 2, 10);
-  drawText('Rs.', margin + col1 + col2 + col3 + col4 + col5 + 12, tableY + 12, 7, false, '#000000');
-  drawBox(margin + col1 + col2 + col3 + col4 + col5 + col6 / 2, tableY + 10, col6 / 2, 10);
-  drawText(
-    'P.',
-    margin + col1 + col2 + col3 + col4 + col5 + col6 / 2 + 15,
-    tableY + 12,
-    7,
-    false,
-    '#000000',
-  );
+  // Goods Section
+  drawSectionBox(margin, y, goodsWidth, goodsChargesHeight, 'Goods Particulars');
 
-  // Table content row
-  const contentRowY = tableY + 20;
-  const contentRowHeight = tableHeight - 20;
+  // Row 1: Description
+  const goodsContentY = y + 20;
+  const labelCol = margin + 8;
+  const valueCol = margin + 75;
+  const col2Label = margin + goodsWidth * 0.5;
+  const col2Value = margin + goodsWidth * 0.5 + 65;
 
-  drawBox(margin, contentRowY, col1, contentRowHeight);
-  // Package count - circled
-  if (d.packageCount) {
-    pdf.circle(margin + 25, contentRowY + 20, 15).stroke();
-    drawText(String(d.packageCount), margin + 18, contentRowY + 14, 14, true, '#000000');
-  }
+  drawLabel('Description:', labelCol, goodsContentY + 4, 8);
+  drawTextWrap(d.goodsDescription || '-', valueCol, goodsContentY + 2, goodsWidth - 85, 9, false, '#333333', 22);
 
-  drawBox(margin + col1, contentRowY, col2, contentRowHeight);
-  // Goods description
-  drawTextWrap(
-    d.goodsDescription || '',
-    margin + col1 + 5,
-    contentRowY + 5,
-    col2 - 10,
-    9,
-    false,
-    '#000000',
-    42,
-  );
-  // E-way bills
+  // Row 2: Packages & Packing
+  const row2Y = goodsContentY + 26;
+  drawLabel('No. of Pkgs:', labelCol, row2Y, 8);
+  drawValue(String(d.packageCount || '-'), valueCol, row2Y - 2, 10);
+
+  drawLabel('Packing Type:', col2Label, row2Y, 8);
+  drawValue(d.packingType || '-', col2Value, row2Y - 2, 10, false);
+
+  // Row 3: Weights
+  const row3Y = row2Y + 16;
+  drawLabel('Actual Weight:', labelCol, row3Y, 8);
+  const actualWt = d.actualWeight ? `${d.actualWeight.value} ${d.actualWeight.unit}` : '-';
+  drawValue(actualWt, valueCol, row3Y - 2, 10);
+
+  drawLabel('Chargeable Wt:', col2Label, row3Y, 8);
+  const chargeWt = d.chargeableWeight ? `${d.chargeableWeight.value} ${d.chargeableWeight.unit}` : '-';
+  drawValue(chargeWt, col2Value, row3Y - 2, 10);
+
+  // Row 4: E-way & Invoice
+  const row4Y = row3Y + 16;
   if (d.ewayBills.length > 0) {
-    drawText('E-way:', margin + col1 + 5, contentRowY + 35, 7, true, '#000000');
-    drawTextWrap(
-      d.ewayBills.join(', '),
-      margin + col1 + 5,
-      contentRowY + 51,
-      col2 - 10,
-      7,
-      false,
-      '#000000',
-      contentRowHeight - 54,
-    );
+    drawLabel('E-way Bill:', labelCol, row4Y, 8);
+    drawTextWrap(d.ewayBills.join(', '), valueCol, row4Y - 2, goodsWidth * 0.45 - 10, 9, false, '#333333', 12);
+  }
+  if (d.invoices.length > 0) {
+    drawLabel('Invoice No:', col2Label, row4Y, 8);
+    const invText = d.invoices.map((inv) => inv.number).join(', ');
+    drawTextWrap(invText, col2Value, row4Y - 2, goodsWidth * 0.45 - 10, 9, false, '#333333', 12);
   }
 
-  drawBox(margin + col1 + col2, contentRowY, col3, contentRowHeight);
-  if (d.actualWeight) {
-    drawText(
-      `${d.actualWeight.value}`,
-      margin + col1 + col2 + 8,
-      contentRowY + 15,
-      10,
-      true,
-      '#000000',
-    );
-    drawText(d.actualWeight.unit, margin + col1 + col2 + 8, contentRowY + 28, 7, false, '#000000');
+  // Row 5: Remarks (if present)
+  if (d.remarks) {
+    const row5Y = row4Y + 16;
+    drawLabel('Remarks:', labelCol, row5Y, 8);
+    drawTextWrap(d.remarks, valueCol, row5Y - 2, goodsWidth - 85, 8, false, '#555555', 10);
   }
 
-  drawBox(margin + col1 + col2 + col3, contentRowY, col4, contentRowHeight);
-  if (d.chargeableWeight) {
-    drawText(
-      `${d.chargeableWeight.value}`,
-      margin + col1 + col2 + col3 + 8,
-      contentRowY + 15,
-      10,
-      true,
-      '#000000',
-    );
-    drawText(
-      d.chargeableWeight.unit,
-      margin + col1 + col2 + col3 + 8,
-      contentRowY + 28,
-      7,
-      false,
-      '#000000',
-    );
-  }
+  // Charges Section
+  const chargesX = margin + goodsWidth + 8;
+  drawSectionBox(chargesX, y, chargesWidth, goodsChargesHeight, 'Freight Charges');
 
-  // Charges column - multiple rows
-  const chargesX = margin + col1 + col2 + col3 + col4;
-  const chargeLabels = [
-    'Total Freight',
-    'Loading Ch.',
-    'Unloading Ch.',
-    'St. Ch.',
-    'Express Ch.',
-    'Any Other Ch.',
-  ];
-  const chargeValues = [
-    d.charges.freightPaise,
-    d.charges.loadingPaise,
-    d.charges.unloadingPaise,
-    d.charges.statisticalPaise,
-    d.charges.expressPaise,
-    d.charges.otherPaise,
+  const chargeItems = [
+    { label: 'Freight', value: d.charges.freightPaise },
+    { label: 'Loading', value: d.charges.loadingPaise },
+    { label: 'Unloading', value: d.charges.unloadingPaise },
+    { label: 'Statistical', value: d.charges.statisticalPaise },
+    { label: 'Express', value: d.charges.expressPaise },
+    { label: 'Other', value: d.charges.otherPaise },
   ];
 
-  const chargeRowHeight = contentRowHeight / chargeLabels.length;
-  chargeLabels.forEach((label, i) => {
-    const rowY = contentRowY + i * chargeRowHeight;
-    drawBox(chargesX, rowY, col5, chargeRowHeight);
-    drawText(label, chargesX + 3, rowY + 2, 6, false, '#000000');
-
-    drawBox(chargesX + col5, rowY, col6 / 2, chargeRowHeight);
-    const val = chargeValues[i] ?? 0;
-    if (val !== 0) {
-      const rs = Math.floor(val / 100);
-      drawText(String(rs), chargesX + col5 + 5, rowY + 2, 7, false, '#000000');
-    }
-
-    drawBox(chargesX + col5 + col6 / 2, rowY, col6 / 2, chargeRowHeight);
-    if (val !== 0) {
-      const ps = val % 100;
-      drawText(
-        String(ps).padStart(2, '0'),
-        chargesX + col5 + col6 / 2 + 5,
-        rowY + 2,
-        7,
-        false,
-        '#000000',
-      );
-    }
+  let chargeRowY = y + 21;
+  const chargeLineHeight = 11;
+  chargeItems.forEach((item) => {
+    drawLabel(item.label + ':', chargesX + 8, chargeRowY, 8);
+    const amt = item.value ? `₹ ${(item.value / 100).toFixed(2)}` : '-';
+    drawText(amt, chargesX + chargesWidth - 75, chargeRowY - 2, 9, false, '#333333');
+    chargeRowY += chargeLineHeight;
   });
 
-  // Payment type section (right side of packages)
-  const paymentX = margin + grid.tableWidth + grid.paymentGap;
-  if (grid.paymentWidth > 50) {
-    drawBox(paymentX, contentRowY, grid.paymentWidth, contentRowHeight);
-    drawCheckbox(paymentX + 5, contentRowY + 8, d.freightType === 'to-pay', 'To Pay', 8);
-    drawText('or', paymentX + 68, contentRowY + 10, 7, false, '#666666');
-    drawCheckbox(paymentX + 5, contentRowY + 25, d.freightType === 'paid', 'Paid', 8);
-    drawText('or', paymentX + 68, contentRowY + 27, 7, false, '#666666');
-    drawCheckbox(paymentX + 5, contentRowY + 42, d.freightType === 'billed', 'To Billed', 8);
+  // Total row with highlight (below all charge items)
+  const totalRowY = chargeRowY + 2;
+  pdf.rect(chargesX + 1, totalRowY, chargesWidth - 2, 16).fill(lightBg);
+  drawText('TOTAL:', chargesX + 8, totalRowY + 3, 9, true, primaryColor);
+  const totalAmt = `₹ ${((b.totalPaise ?? 0) / 100).toFixed(2)}`;
+  drawText(totalAmt, chargesX + chargesWidth - 75, totalRowY + 2, 11, true, primaryColor);
+
+  y += goodsChargesHeight + 6;
+
+  // ============ AMOUNT IN WORDS & TERMS ROW ============
+  const termsRowHeight = 40;
+  pdf.rect(margin, y, contentWidth, termsRowHeight).fill('#ffffff');
+  pdf.strokeColor(borderColor).lineWidth(1).rect(margin, y, contentWidth, termsRowHeight).stroke();
+
+  // Amount in words
+  drawLabel('Amount in Words:', margin + 10, y + 6, 9);
+  drawText(b.amountInWords || '-', margin + 110, y + 4, 11, true, '#222222');
+
+  // Terms (if any)
+  if (c?.carriageTerms) {
+    drawLabel('Terms:', margin + 10, y + 22, 9);
+    drawTextWrap(c.carriageTerms, margin + 50, y + 20, contentWidth - 60, 9, false, '#555555', 14);
   }
 
-  y = layout.total.top;
-
-  // Grand Total row
-  drawBox(chargesX, y, col5, 15);
-  drawText('Gr. TOTAL', chargesX + 5, y + 3, 7, true, '#000000');
-  drawBox(chargesX + col5, y, col6 / 2, 15);
-  const totalRs = Math.floor((b.totalPaise ?? 0) / 100);
-  drawText(String(totalRs), chargesX + col5 + 5, y + 3, 8, true, '#000000');
-  drawBox(chargesX + col5 + col6 / 2, y, col6 / 2, 15);
-  const totalPs = (b.totalPaise ?? 0) % 100;
-  drawText(
-    String(totalPs).padStart(2, '0'),
-    chargesX + col5 + col6 / 2 + 5,
-    y + 3,
-    8,
-    true,
-    '#000000',
-  );
-
-  y += 20;
-
-  // Amount in words row
-  const totalFormatted = (b.totalPaise ?? 0) / 100;
-  drawText(
-    `Total: Rs. ${totalFormatted.toFixed(2)} (${b.amountInWords})`,
-    margin + 5,
-    y,
-    8,
-    false,
-    '#000000',
-  );
-
-  y = layout.terms.top;
-
-  // ============ TERMS SECTION ============
-  if (c && (c.carriageTerms || c.bankDetails)) {
-    if (c.carriageTerms) {
-      drawText('Terms:', margin + 5, y, 7, true, '#000000');
-      drawTextWrap(c.carriageTerms, margin + 40, y, contentWidth - 50, 7, false, '#000000', 18);
-      y += 20;
-    }
-    if (c.bankDetails) {
-      drawText('Bank:', margin + 5, y, 7, true, '#000000');
-      drawTextWrap(c.bankDetails, margin + 40, y, contentWidth - 50, 7, false, '#000000', 8);
-      y += 10;
-    }
-  }
+  y += termsRowHeight + 8;
 
   // ============ SIGNATURE SECTION ============
-  const sigY = layout.signatures.top;
-  const sigWidth = contentWidth / 2;
+  const sigHeight = 45;
+  const sigGap = 8;
+  const sigWidth = (contentWidth - sigGap * 2) / 3;
 
-  drawText(
-    'For Terms & Conditions, see overleaf',
-    margin + sigWidth - 58,
-    sigY,
-    7,
-    false,
-    '#666666',
-  );
+  // Three signature boxes
+  const sigLabels = ['Consignor Signature', 'Transport Operator', 'Received By'];
+  sigLabels.forEach((label, i) => {
+    const sigX = margin + i * (sigWidth + sigGap);
+    pdf.rect(sigX, y, sigWidth, sigHeight).fill('#ffffff');
+    pdf.strokeColor(borderColor).lineWidth(0.75).rect(sigX, y, sigWidth, sigHeight).stroke();
 
-  const signatureLineY = sigY + 25;
-  pdf
-    .strokeColor('#000000')
-    .lineWidth(0.5)
-    .moveTo(margin + 5, signatureLineY)
-    .lineTo(margin + sigWidth - 15, signatureLineY)
-    .stroke();
-  drawText('Signature of Consignor', margin + 5, signatureLineY + 4, 8, false, '#000000');
+    // Signature line
+    pdf
+      .strokeColor('#999999')
+      .lineWidth(0.5)
+      .moveTo(sigX + 10, y + sigHeight - 18)
+      .lineTo(sigX + sigWidth - 10, y + sigHeight - 18)
+      .stroke();
 
-  pdf
-    .strokeColor('#000000')
-    .lineWidth(0.5)
-    .moveTo(margin + sigWidth + 15, signatureLineY)
-    .lineTo(pageWidth - margin - 5, signatureLineY)
-    .stroke();
-  drawText(
-    'Signature of the Transport Operator',
-    margin + sigWidth + 15,
-    signatureLineY + 4,
-    8,
-    false,
-    '#000000',
-  );
+    // Center the label within the box
+    pdf.font('Body').fontSize(9);
+    const labelWidth = pdf.widthOfString(label);
+    const labelX = sigX + (sigWidth - labelWidth) / 2;
+    drawLabel(label, labelX, y + sigHeight - 12, 9);
+  });
 
-  y += 25;
+  // Terms notice - right aligned below signature boxes
+  const termsText = 'For Terms & Conditions, see overleaf';
+  pdf.font('Body').fontSize(8);
+  const termsWidth = pdf.widthOfString(termsText);
+  drawText(termsText, margin + contentWidth - termsWidth, y + sigHeight + 4, 8, false, '#888888');
+
+  y += sigHeight + 8;
 
   const needsContinuation =
     (d.goodsDescription?.length ?? 0) > 220 ||
@@ -798,275 +611,7 @@ export async function renderBiltyPdf(
       pdf.restore();
     }
     pdf.page.margins.bottom = 0;
-    drawText(`Page ${i + 1} of ${pages.count}`, margin, layout.footer.top, 7, false, '#747b85');
-  }
-
-  pdf.end();
-  return ready;
-}
-
-/** Thermal receipt format - simpler layout for small printers */
-async function renderThermalPdf(
-  record: BiltyRecord,
-  options: PrintOptions,
-  draftCompany?: CompanySnapshot,
-): Promise<Buffer> {
-  const b = printData(record),
-    d = b.data,
-    c = b.companySnapshot ?? draftCompany;
-
-  const margin = 14,
-    size = 8.5,
-    lineHeight = 13;
-
-  const pdf = new PDFDocument({
-    size: [226.7717, 1133.86],
-    margin,
-    bufferPages: true,
-    info: { Title: `Bilty ${b.number ?? 'Draft'}`, Author: c?.name ?? 'Bilty' },
-  });
-
-  pdf.registerFont('Body', join(__dirname, '../../../assets/fonts/NotoSans-Regular.ttf'));
-  pdf.registerFont('Bold', join(__dirname, '../../../assets/fonts/NotoSans-Bold.ttf'));
-  pdf.registerFont(
-    'Devanagari',
-    join(__dirname, '../../../assets/fonts/NotoSansDevanagari-Regular.ttf'),
-  );
-
-  const chunks: Buffer[] = [];
-  const ready = new Promise<Buffer>((resolve, reject) => {
-    pdf.on('data', (v) => chunks.push(v));
-    pdf.on('end', () => resolve(Buffer.concat(chunks)));
-    pdf.on('error', reject);
-  });
-
-  const width = pdf.page.width - 2 * margin,
-    bottom = pdf.page.height - margin - 20;
-  const color = /^#[a-fA-F0-9]{6}$/.test(c?.primaryColor ?? '') ? c!.primaryColor : '#2d4f9e';
-  let y = margin;
-
-  const runs = (text: string) =>
-    clean(text)
-      .split(/([\u0900-\u097f]+)/)
-      .filter(Boolean);
-
-  const family = (text: string, bold: boolean) =>
-    /[\u0900-\u097f]/.test(text) ? 'Devanagari' : bold ? 'Bold' : 'Body';
-
-  function measure(text: string, fontSize: number, bold: boolean) {
-    return runs(text).reduce(
-      (sum, r) => sum + pdf.font(family(r, bold)).fontSize(fontSize).widthOfString(r),
-      0,
-    );
-  }
-
-  function wrap(text: string, fontSize: number, bold: boolean, maxWidth = width) {
-    const lines: string[] = [];
-    for (const paragraph of clean(text).split(/\r?\n/)) {
-      let line = '';
-      for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-        if (measure(line ? `${line} ${word}` : word, fontSize, bold) <= maxWidth) {
-          line = line ? `${line} ${word}` : word;
-          continue;
-        }
-        if (line) {
-          lines.push(line);
-          line = '';
-        }
-        for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(
-          word,
-        )) {
-          if (line && measure(line + segment, fontSize, bold) > maxWidth) {
-            lines.push(line);
-            line = '';
-          }
-          line += segment;
-        }
-      }
-      if (line) lines.push(line);
-    }
-    return lines;
-  }
-
-  function draw(
-    text: string,
-    x: number,
-    at: number,
-    fontSize: number,
-    bold = false,
-    ink = '#20252d',
-  ) {
-    pdf.fillColor(ink);
-    for (const run of runs(text)) {
-      pdf.font(family(run, bold)).fontSize(fontSize).text(run, x, at, { lineBreak: false });
-      x += pdf.widthOfString(run);
-    }
-  }
-
-  function header() {
-    y = margin;
-    draw('BILTY / GOODS RECEIPT', margin, y, 10, true, color);
-    y += 19;
-    for (const line of wrap(
-      `${b.number ?? 'Unnumbered draft'} | ${options.copy.toUpperCase()} COPY`,
-      8,
-      true,
-    )) {
-      draw(line, margin, y, 8, true);
-      y += 12;
-    }
-    draw(`Version ${b.version} | ${b.createdAt.slice(0, 10)}`, margin, y, 8, false, '#69717c');
-    y += 13;
-    if (b.watermarks.length) {
-      draw(b.watermarks.map(clean).join(' / '), margin, y, 9, true, '#ab261f');
-      y += 14;
-    }
-    pdf
-      .strokeColor('#d5d9df')
-      .moveTo(margin, y)
-      .lineTo(margin + width, y)
-      .stroke();
-    y += 12;
-  }
-
-  function newPage() {
-    pdf.addPage();
-    header();
-  }
-
-  function text(value: string, bold = false, fontSize = size) {
-    for (const line of wrap(value, fontSize, bold)) {
-      const height = Math.max(lineHeight, fontSize * 1.4);
-      if (y + height > bottom) newPage();
-      draw(line, margin, y, fontSize, bold);
-      y += height;
-    }
-  }
-
-  function section(title: string) {
-    if (y + 50 > bottom) newPage();
-    y += 9;
-    draw(title.toUpperCase(), margin, y, 9, true, color);
-    y += 16;
-  }
-
-  function line(label: string, value: unknown) {
-    if (value === null || value === undefined || value === '') return;
-    text(`${label}: ${String(value)}`);
-  }
-
-  const moneyFull = (v: number | null) => (v === null ? 'Not set' : `INR ${(v / 100).toFixed(2)}`);
-
-  header();
-  if (c) {
-    text(c.name, true, 12);
-    y += 3;
-    if (c.logoUrl.startsWith('data:') && validInlineLogo(c.logoUrl)) {
-      pdf.image(Buffer.from(c.logoUrl.split(',')[1]!, 'base64'), margin, y, { fit: [100, 38] });
-      y += 43;
-    }
-    if (c.address) text(c.address);
-    line('GSTIN / PAN', [c.gstin, c.pan].filter(Boolean).join(' / '));
-    line('Contact', [c.phone, c.email].filter(Boolean).join(' | '));
-  }
-
-  for (const kind of ['consignor', 'consignee'] as const) {
-    const p = d[kind];
-    section(kind);
-    text(p.name || 'Not supplied', true);
-    if (p.address) text(p.address);
-    line('GSTIN', p.gstin);
-    line('Phone', p.phone);
-  }
-
-  section('Consignment');
-  line('Route', `${d.fromLocation || '-'} to ${d.toLocation || '-'}`);
-  line('Goods', d.goodsDescription);
-  line(
-    'Packages / packing',
-    [d.packageCount, d.packingType].filter((v) => v !== null && v !== '').join(' / '),
-  );
-  line('Actual weight', d.actualWeight ? `${d.actualWeight.value} ${d.actualWeight.unit}` : null);
-  line(
-    'Chargeable weight',
-    d.chargeableWeight ? `${d.chargeableWeight.value} ${d.chargeableWeight.unit}` : null,
-  );
-  line('Volume (CBM)', d.volumeCbm);
-  line('Delivery', d.deliveryMode);
-  line('Vehicle', d.vehicleNumber);
-  line('Driver', [d.driverName, d.driverPhone].filter(Boolean).join(' | '));
-  line('Remarks', d.remarks);
-
-  if (d.ewayBills.length) {
-    section('E-way bill references');
-    text(d.ewayBills.join('  /  '));
-  }
-
-  if (d.invoices.length) {
-    section('Invoices');
-    d.invoices.forEach((v) =>
-      line(
-        v.number,
-        [v.date, v.declaredValuePaise === null ? '' : moneyFull(v.declaredValuePaise)]
-          .filter(Boolean)
-          .join(' | ') || 'No date/value supplied',
-      ),
-    );
-  }
-
-  section('Freight and charges');
-  line('Freight type', d.freightType);
-  line('GST payable by', d.gstPayableBy);
-  for (const [label, key] of [
-    ['Freight', 'freightPaise'],
-    ['Loading', 'loadingPaise'],
-    ['Unloading', 'unloadingPaise'],
-    ['Statistical', 'statisticalPaise'],
-    ['Express', 'expressPaise'],
-    ['Other', 'otherPaise'],
-  ] as const)
-    line(label, moneyFull(d.charges[key]));
-  y += 4;
-  text(`TOTAL: ${moneyFull(b.totalPaise)}`, true, 11);
-  text(b.amountInWords);
-
-  section('Insurance');
-  line('Status', d.insurance.status);
-  line('Insurer', d.insurance.company);
-  line('Policy', d.insurance.policyNumber);
-  line('Date', d.insurance.date);
-  line('Amount', d.insurance.amountPaise === null ? null : moneyFull(d.insurance.amountPaise));
-  line('Risk', d.insurance.risk);
-
-  if (c && (c.bankDetails || c.jurisdiction || c.carriageTerms || c.demurrageTerms)) {
-    section('Terms and payment');
-    line('Bank', c.bankDetails);
-    line('Jurisdiction', c.jurisdiction);
-    line('Carriage terms', c.carriageTerms);
-    line('Demurrage', c.demurrageTerms);
-  }
-
-  if (y + 90 > bottom) newPage();
-  section('Acknowledgement');
-  y += 12;
-  text('Consignor: __________________');
-  y += 10;
-  text('Carrier: ____________________');
-  y += 10;
-  text('Received by: ________________');
-
-  const pages = pdf.bufferedPageRange();
-  for (let i = 0; i < pages.count; i++) {
-    pdf.switchToPage(i);
-    pdf.page.margins.bottom = 0;
-    draw(
-      `Page ${i + 1} of ${pages.count}`,
-      margin,
-      pdf.page.height - margin + 2,
-      7,
-      false,
-      '#747b85',
-    );
+    drawText(`Page ${i + 1} of ${pages.count}`, margin, pageHeight - 20, 7, false, '#747b85');
   }
 
   pdf.end();

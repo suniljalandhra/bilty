@@ -62,7 +62,7 @@ export class ShareService {
       )
         throw new NotFoundException('Bilty not found');
       return tx.query(
-        'SELECT id,version,format,copy,expires_at AS "expiresAt",revoked_at AS "revokedAt",created_at AS "createdAt" FROM bilty_shares WHERE bilty_id=$1 AND company_id=$2 ORDER BY created_at DESC LIMIT 100',
+        `SELECT id,version,'a4' AS format,copy,expires_at AS "expiresAt",revoked_at AS "revokedAt",created_at AS "createdAt" FROM bilty_shares WHERE bilty_id=$1 AND company_id=$2 ORDER BY created_at DESC LIMIT 100`,
         [id, a.companyId],
       );
     });
@@ -87,6 +87,7 @@ export class ShareService {
       [hashToken(token)],
     );
     if (!row) throw new NotFoundException('Link unavailable');
-    return { record: row.snapshot, options: { format: row.format, copy: row.copy } };
+    // Legacy thermal links retain their frozen data but now use the supported A4 renderer.
+    return { record: row.snapshot, options: { format: 'a4', copy: row.copy } };
   }
 }

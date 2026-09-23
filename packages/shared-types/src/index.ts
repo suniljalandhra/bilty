@@ -59,6 +59,38 @@ export interface BiltyData {
   gstPayableBy: 'consignor' | 'consignee' | 'agency' | null;
   insurance: Insurance;
 }
+export const BILTY_LAYOUTS = [
+  'classic-grid',
+  'route-focus',
+  'freight-ledger',
+  'dispatch-sheet',
+  'modern-panels',
+] as const;
+export type BiltyLayoutId = (typeof BILTY_LAYOUTS)[number];
+export const DEFAULT_LAYOUT: BiltyLayoutId = 'classic-grid';
+export const LAYOUT_META: { id: BiltyLayoutId; name: string; description: string }[] = [
+  { id: 'classic-grid', name: 'Classic Grid', description: 'The original traditional bilty grid.' },
+  {
+    id: 'route-focus',
+    name: 'Route Focus',
+    description: 'Route first, with wide goods and party panels.',
+  },
+  {
+    id: 'freight-ledger',
+    name: 'Freight Ledger',
+    description: 'Charges on the left, with ruled accounting panels.',
+  },
+  {
+    id: 'dispatch-sheet',
+    name: 'Dispatch Sheet',
+    description: 'Vehicle and delivery details lead the document.',
+  },
+  {
+    id: 'modern-panels',
+    name: 'Modern Panels',
+    description: 'Goods, references and charges side by side.',
+  },
+];
 export interface CompanySnapshot {
   name: string;
   address: string;
@@ -73,6 +105,7 @@ export interface CompanySnapshot {
   jurisdiction: string;
   carriageTerms: string;
   demurrageTerms: string;
+  biltyLayout?: BiltyLayoutId;
 }
 export interface BiltyRecord {
   id: string;
