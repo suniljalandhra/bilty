@@ -3,6 +3,9 @@ import { validInlineLogo } from '../company/logo';
 import type { BiltyData, CompanySnapshot } from '@bilty/shared-types';
 import { BiltyError } from './errors';
 import { MAX_PAISE, totalPaise } from './money';
+
+import { BILTY_LAYOUTS, DEFAULT_LAYOUT } from '@bilty/shared-types';
+export { BILTY_LAYOUTS, DEFAULT_LAYOUT } from '@bilty/shared-types';
 const text = z.string().trim().max(2000).default('');
 const longText = z.string().trim().max(10000).default('');
 const money = z.number().int().min(0).max(MAX_PAISE);
@@ -126,6 +129,7 @@ const companySchema = z.strictObject({
   jurisdiction: text,
   carriageTerms: longText,
   demurrageTerms: longText,
+  biltyLayout: z.enum(BILTY_LAYOUTS).default(DEFAULT_LAYOUT),
 });
 export function parseCompany(raw: unknown): CompanySnapshot {
   const parsed = companySchema.safeParse(raw);

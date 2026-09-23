@@ -213,8 +213,14 @@ test('PDF and share HTTP routes respect authentication, tenant scope and revocat
   await request(`/biltys/${b.id}/issue`, 'POST', { expectedVersion: 1 });
   assert.equal((await request(`/biltys/${b.id}/pdf`, 'GET', undefined, '')).status, 401);
   assert.equal((await request(`/biltys/${b.id}/pdf`, 'GET', undefined, otherToken)).status, 404);
-  const pdf = await request(`/biltys/${b.id}/pdf?format=thermal&copy=driver`);
+  const pdf = await request(`/biltys/${b.id}/pdf?format=a4&copy=driver`);
   assert.equal(pdf.status, 200);
+  assert.equal((await request(`/biltys/${b.id}/pdf?format=thermal`)).status, 400);
+  assert.equal(
+    (await request(`/biltys/${b.id}/shares`, 'POST', { expiresInHours: 1, format: 'thermal' }))
+      .status,
+    400,
+  );
   assert.match(pdf.headers.get('content-type')!, /application\/pdf/);
   const created = await request(`/biltys/${b.id}/shares`, 'POST', {
     expiresInHours: 1,

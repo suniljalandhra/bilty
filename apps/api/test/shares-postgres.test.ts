@@ -3,6 +3,9 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { BiltyService } from '../src/modules/bilty/bilty.service';
+import { CompanyService } from '../src/modules/company/company.service';
+import { renderBiltyPdf } from '../src/modules/print/pdf';
+import { PDFParse } from 'pdf-parse';
 import { ShareService } from '../src/modules/print/share.service';
 import { actorOf, type Principal } from '../src/modules/auth/access';
 import { config, google, testDatabase, resetDatabase } from './auth-fixtures';
@@ -10,7 +13,8 @@ import { completeData } from './fixtures';
 const db = testDatabase(),
   auth = new AuthService(db, config, google),
   biltys = new BiltyService(db),
-  shares = new ShareService(db, config);
+  shares = new ShareService(db, config),
+  companies = new CompanyService(db, config);
 let a: Principal, b: Principal;
 before(() => resetDatabase(db));
 after(async () => {
@@ -61,7 +65,7 @@ test('shared version stays fixed across edits and cancellation disables every li
   const doc = await issued();
   const share = await shares.create(a, doc.id, {
     expiresInHours: 1,
-    format: 'thermal',
+    format: 'a4',
     copy: 'consignee',
   });
   const token = new URL(share.url).pathname.split('/').pop()!;
@@ -101,4 +105,40 @@ test('concurrent cancellation cannot leave an accessible share', async () => {
       shares.resolve(new URL(created.value.url).pathname.split('/').pop()!),
     );
   else assert.match(String(created.reason), /issued/);
+});
+test('settings persistence and shared PDFs preserve the issued layout after profile changes', async () => {
+  assert.equal((await companies.get(a)).profile.biltyLayout, 'classic-grid');
+  for (const biltyLayout of ['route-focus', 'freight-ledger', 'dispatch-sheet', 'modern-panels']) {
+    await companies.update(a, { profile: { biltyLayout } });
+    assert.equal((await companies.get(a)).profile.biltyLayout, biltyLayout);
+  }
+  await companies.update(a, { profile: { phone: '9876543210' } });
+  assert.equal((await companies.get(a)).profile.biltyLayout, 'modern-panels');
+  await assert.rejects(() => companies.update(a, { profile: { biltyLayout: 'unknown' } }));
+  assert.equal((await companies.get(a)).profile.biltyLayout, 'modern-panels');
+  const doc = await issued();
+  const share = await shares.create(a, doc.id, { expiresInHours: 1, format: 'a4', copy: 'office' });
+  const token = new URL(share.url).pathname.split('/').pop()!;
+  await companies.update(a, { profile: { biltyLayout: 'classic-grid', name: 'Changed company' } });
+  const resolved = await shares.resolve(token);
+  assert.equal(resolved.record.companySnapshot?.biltyLayout, 'modern-panels');
+  assert.equal(resolved.record.companySnapshot?.name, 'Transport');
+  const parser = new PDFParse({ data: await renderBiltyPdf(resolved.record, resolved.options) });
+  try {
+    const result = await parser.getText();
+    assert.ok(result.text.includes('INVOICE & E-WAY REFERENCES'));
+    assert.ok(!result.text.includes('Changed company'));
+  } finally {
+    await parser.destroy();
+  }
+});
+
+test('legacy thermal share links resolve to A4 without changing frozen data', async () => {
+  const doc = await issued();
+  const share = await shares.create(a, doc.id, { expiresInHours: 1, format: 'a4', copy: 'driver' });
+  await db.query("UPDATE bilty_shares SET format='thermal' WHERE id=$1", [share.id]);
+  const resolved = await shares.resolve(new URL(share.url).pathname.split('/').pop()!);
+  assert.deepEqual(resolved.options, { format: 'a4', copy: 'driver' });
+  assert.equal(resolved.record.number, doc.number);
+  assert.equal((await shares.list(a, doc.id))[0].format, 'a4');
 });

@@ -48,7 +48,7 @@ export interface Share {
   id: string;
   expiresAt: string;
   version: number;
-  format: 'a4' | 'thermal';
+  format: 'a4';
   copy: string;
   revokedAt: string | null;
   createdAt: string;
@@ -114,6 +114,7 @@ export function blankCompany(): CompanySnapshot {
     phone: '',
     email: '',
     logoUrl: '',
+    biltyLayout: 'classic-grid',
     primaryColor: '#2d4f9e',
     accentColor: '#1d7a4c',
     bankDetails: '',

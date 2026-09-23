@@ -1,12 +1,14 @@
 import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
-import type { BiltyRecord, CompanySnapshot } from '@bilty/shared-types';
+import type { BiltyRecord, BiltyLayoutId, CompanySnapshot } from '@bilty/shared-types';
 import { z } from 'zod';
 import { printData } from '../bilty/domain';
 import { validInlineLogo } from '../company/logo';
+import { renderPanelLayout } from './a4-panels';
+import { DEFAULT_LAYOUT } from '../bilty/validation';
 
 export const printOptions = z.strictObject({
-  format: z.enum(['a4', 'thermal']).default('a4'),
+  format: z.literal('a4').default('a4'),
   copy: z.enum(['consignor', 'consignee', 'driver', 'office']).default('office'),
 });
 export type PrintOptions = z.infer<typeof printOptions>;
@@ -15,6 +17,8 @@ const money = (v: number | null) => (v === null ? '' : `${(v / 100).toFixed(2)}`
 const clean = (v: string) => v.replace(/[—–]/g, '-');
 
 type LayoutBox = { name: string; top: number; bottom: number };
+
+export { LAYOUT_META } from '@bilty/shared-types';
 
 export function a4GridLayout(contentWidth: number) {
   const paymentWidth = 135;
@@ -63,15 +67,25 @@ export async function renderBiltyPdf(
   options: PrintOptions,
   draftCompany?: CompanySnapshot,
 ): Promise<Buffer> {
+  const c = record.companySnapshot ?? draftCompany;
+  // Select layout based on frozen company snapshot or draft company
+  const layoutId: BiltyLayoutId = c?.biltyLayout ?? DEFAULT_LAYOUT;
+
+  if (layoutId !== 'classic-grid') {
+    return renderPanelLayout(record, options, layoutId, draftCompany);
+  }
+  return renderClassicGridLayout(record, options, draftCompany);
+}
+
+/** Classic Grid Layout - the original default layout with accent rule enhancement */
+async function renderClassicGridLayout(
+  record: BiltyRecord,
+  options: PrintOptions,
+  draftCompany?: CompanySnapshot,
+): Promise<Buffer> {
   const b = printData(record),
     d = b.data,
-    c = b.companySnapshot ?? draftCompany,
-    thermal = options.format === 'thermal';
-
-  // For thermal, use simpler layout (keep existing logic)
-  if (thermal) {
-    return renderThermalPdf(record, options, draftCompany);
-  }
+    c = b.companySnapshot ?? draftCompany;
 
   const margin = 20;
   const pdf = new PDFDocument({
@@ -104,6 +118,7 @@ export async function renderBiltyPdf(
   const primaryColor = /^#[a-fA-F0-9]{6}$/.test(c?.primaryColor ?? '')
     ? c!.primaryColor
     : '#1a3a6e';
+  const accentColor = /^#[a-fA-F0-9]{6}$/.test(c?.accentColor ?? '') ? c!.accentColor : '#1d7a4c';
 
   // Helper functions
   const runs = (text: string) =>
@@ -176,12 +191,18 @@ export async function renderBiltyPdf(
   let y = margin;
 
   // ============ HEADER SECTION ============
-  // Top decorative line
+  // Top decorative line with subtle accent rule below
   pdf
     .strokeColor(primaryColor)
     .lineWidth(2)
     .moveTo(margin, y)
     .lineTo(pageWidth - margin, y)
+    .stroke();
+  pdf
+    .strokeColor(accentColor)
+    .lineWidth(0.75)
+    .moveTo(margin, y + 3)
+    .lineTo(pageWidth - margin, y + 3)
     .stroke();
   y += 5;
 
@@ -799,274 +820,6 @@ export async function renderBiltyPdf(
     }
     pdf.page.margins.bottom = 0;
     drawText(`Page ${i + 1} of ${pages.count}`, margin, layout.footer.top, 7, false, '#747b85');
-  }
-
-  pdf.end();
-  return ready;
-}
-
-/** Thermal receipt format - simpler layout for small printers */
-async function renderThermalPdf(
-  record: BiltyRecord,
-  options: PrintOptions,
-  draftCompany?: CompanySnapshot,
-): Promise<Buffer> {
-  const b = printData(record),
-    d = b.data,
-    c = b.companySnapshot ?? draftCompany;
-
-  const margin = 14,
-    size = 8.5,
-    lineHeight = 13;
-
-  const pdf = new PDFDocument({
-    size: [226.7717, 1133.86],
-    margin,
-    bufferPages: true,
-    info: { Title: `Bilty ${b.number ?? 'Draft'}`, Author: c?.name ?? 'Bilty' },
-  });
-
-  pdf.registerFont('Body', join(__dirname, '../../../assets/fonts/NotoSans-Regular.ttf'));
-  pdf.registerFont('Bold', join(__dirname, '../../../assets/fonts/NotoSans-Bold.ttf'));
-  pdf.registerFont(
-    'Devanagari',
-    join(__dirname, '../../../assets/fonts/NotoSansDevanagari-Regular.ttf'),
-  );
-
-  const chunks: Buffer[] = [];
-  const ready = new Promise<Buffer>((resolve, reject) => {
-    pdf.on('data', (v) => chunks.push(v));
-    pdf.on('end', () => resolve(Buffer.concat(chunks)));
-    pdf.on('error', reject);
-  });
-
-  const width = pdf.page.width - 2 * margin,
-    bottom = pdf.page.height - margin - 20;
-  const color = /^#[a-fA-F0-9]{6}$/.test(c?.primaryColor ?? '') ? c!.primaryColor : '#2d4f9e';
-  let y = margin;
-
-  const runs = (text: string) =>
-    clean(text)
-      .split(/([\u0900-\u097f]+)/)
-      .filter(Boolean);
-
-  const family = (text: string, bold: boolean) =>
-    /[\u0900-\u097f]/.test(text) ? 'Devanagari' : bold ? 'Bold' : 'Body';
-
-  function measure(text: string, fontSize: number, bold: boolean) {
-    return runs(text).reduce(
-      (sum, r) => sum + pdf.font(family(r, bold)).fontSize(fontSize).widthOfString(r),
-      0,
-    );
-  }
-
-  function wrap(text: string, fontSize: number, bold: boolean, maxWidth = width) {
-    const lines: string[] = [];
-    for (const paragraph of clean(text).split(/\r?\n/)) {
-      let line = '';
-      for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-        if (measure(line ? `${line} ${word}` : word, fontSize, bold) <= maxWidth) {
-          line = line ? `${line} ${word}` : word;
-          continue;
-        }
-        if (line) {
-          lines.push(line);
-          line = '';
-        }
-        for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(
-          word,
-        )) {
-          if (line && measure(line + segment, fontSize, bold) > maxWidth) {
-            lines.push(line);
-            line = '';
-          }
-          line += segment;
-        }
-      }
-      if (line) lines.push(line);
-    }
-    return lines;
-  }
-
-  function draw(
-    text: string,
-    x: number,
-    at: number,
-    fontSize: number,
-    bold = false,
-    ink = '#20252d',
-  ) {
-    pdf.fillColor(ink);
-    for (const run of runs(text)) {
-      pdf.font(family(run, bold)).fontSize(fontSize).text(run, x, at, { lineBreak: false });
-      x += pdf.widthOfString(run);
-    }
-  }
-
-  function header() {
-    y = margin;
-    draw('BILTY / GOODS RECEIPT', margin, y, 10, true, color);
-    y += 19;
-    for (const line of wrap(
-      `${b.number ?? 'Unnumbered draft'} | ${options.copy.toUpperCase()} COPY`,
-      8,
-      true,
-    )) {
-      draw(line, margin, y, 8, true);
-      y += 12;
-    }
-    draw(`Version ${b.version} | ${b.createdAt.slice(0, 10)}`, margin, y, 8, false, '#69717c');
-    y += 13;
-    if (b.watermarks.length) {
-      draw(b.watermarks.map(clean).join(' / '), margin, y, 9, true, '#ab261f');
-      y += 14;
-    }
-    pdf
-      .strokeColor('#d5d9df')
-      .moveTo(margin, y)
-      .lineTo(margin + width, y)
-      .stroke();
-    y += 12;
-  }
-
-  function newPage() {
-    pdf.addPage();
-    header();
-  }
-
-  function text(value: string, bold = false, fontSize = size) {
-    for (const line of wrap(value, fontSize, bold)) {
-      const height = Math.max(lineHeight, fontSize * 1.4);
-      if (y + height > bottom) newPage();
-      draw(line, margin, y, fontSize, bold);
-      y += height;
-    }
-  }
-
-  function section(title: string) {
-    if (y + 50 > bottom) newPage();
-    y += 9;
-    draw(title.toUpperCase(), margin, y, 9, true, color);
-    y += 16;
-  }
-
-  function line(label: string, value: unknown) {
-    if (value === null || value === undefined || value === '') return;
-    text(`${label}: ${String(value)}`);
-  }
-
-  const moneyFull = (v: number | null) => (v === null ? 'Not set' : `INR ${(v / 100).toFixed(2)}`);
-
-  header();
-  if (c) {
-    text(c.name, true, 12);
-    y += 3;
-    if (c.logoUrl.startsWith('data:') && validInlineLogo(c.logoUrl)) {
-      pdf.image(Buffer.from(c.logoUrl.split(',')[1]!, 'base64'), margin, y, { fit: [100, 38] });
-      y += 43;
-    }
-    if (c.address) text(c.address);
-    line('GSTIN / PAN', [c.gstin, c.pan].filter(Boolean).join(' / '));
-    line('Contact', [c.phone, c.email].filter(Boolean).join(' | '));
-  }
-
-  for (const kind of ['consignor', 'consignee'] as const) {
-    const p = d[kind];
-    section(kind);
-    text(p.name || 'Not supplied', true);
-    if (p.address) text(p.address);
-    line('GSTIN', p.gstin);
-    line('Phone', p.phone);
-  }
-
-  section('Consignment');
-  line('Route', `${d.fromLocation || '-'} to ${d.toLocation || '-'}`);
-  line('Goods', d.goodsDescription);
-  line(
-    'Packages / packing',
-    [d.packageCount, d.packingType].filter((v) => v !== null && v !== '').join(' / '),
-  );
-  line('Actual weight', d.actualWeight ? `${d.actualWeight.value} ${d.actualWeight.unit}` : null);
-  line(
-    'Chargeable weight',
-    d.chargeableWeight ? `${d.chargeableWeight.value} ${d.chargeableWeight.unit}` : null,
-  );
-  line('Volume (CBM)', d.volumeCbm);
-  line('Delivery', d.deliveryMode);
-  line('Vehicle', d.vehicleNumber);
-  line('Driver', [d.driverName, d.driverPhone].filter(Boolean).join(' | '));
-  line('Remarks', d.remarks);
-
-  if (d.ewayBills.length) {
-    section('E-way bill references');
-    text(d.ewayBills.join('  /  '));
-  }
-
-  if (d.invoices.length) {
-    section('Invoices');
-    d.invoices.forEach((v) =>
-      line(
-        v.number,
-        [v.date, v.declaredValuePaise === null ? '' : moneyFull(v.declaredValuePaise)]
-          .filter(Boolean)
-          .join(' | ') || 'No date/value supplied',
-      ),
-    );
-  }
-
-  section('Freight and charges');
-  line('Freight type', d.freightType);
-  line('GST payable by', d.gstPayableBy);
-  for (const [label, key] of [
-    ['Freight', 'freightPaise'],
-    ['Loading', 'loadingPaise'],
-    ['Unloading', 'unloadingPaise'],
-    ['Statistical', 'statisticalPaise'],
-    ['Express', 'expressPaise'],
-    ['Other', 'otherPaise'],
-  ] as const)
-    line(label, moneyFull(d.charges[key]));
-  y += 4;
-  text(`TOTAL: ${moneyFull(b.totalPaise)}`, true, 11);
-  text(b.amountInWords);
-
-  section('Insurance');
-  line('Status', d.insurance.status);
-  line('Insurer', d.insurance.company);
-  line('Policy', d.insurance.policyNumber);
-  line('Date', d.insurance.date);
-  line('Amount', d.insurance.amountPaise === null ? null : moneyFull(d.insurance.amountPaise));
-  line('Risk', d.insurance.risk);
-
-  if (c && (c.bankDetails || c.jurisdiction || c.carriageTerms || c.demurrageTerms)) {
-    section('Terms and payment');
-    line('Bank', c.bankDetails);
-    line('Jurisdiction', c.jurisdiction);
-    line('Carriage terms', c.carriageTerms);
-    line('Demurrage', c.demurrageTerms);
-  }
-
-  if (y + 90 > bottom) newPage();
-  section('Acknowledgement');
-  y += 12;
-  text('Consignor: __________________');
-  y += 10;
-  text('Carrier: ____________________');
-  y += 10;
-  text('Received by: ________________');
-
-  const pages = pdf.bufferedPageRange();
-  for (let i = 0; i < pages.count; i++) {
-    pdf.switchToPage(i);
-    pdf.page.margins.bottom = 0;
-    draw(
-      `Page ${i + 1} of ${pages.count}`,
-      margin,
-      pdf.page.height - margin + 2,
-      7,
-      false,
-      '#747b85',
-    );
   }
 
   pdf.end();
