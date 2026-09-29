@@ -1,9 +1,156 @@
 'use client';
+import './bilty-layouts.css';
 import { useState, type FormEvent } from 'react';
-import type { CompanySnapshot } from '@bilty/shared-types';
+import { LAYOUT_META as LAYOUT_OPTIONS } from '@bilty/shared-types';
+import type { BiltyLayoutId, CompanySnapshot } from '@bilty/shared-types';
 import type { Company } from '@/lib/model';
 import { errorMessage } from '@/lib/api';
 import { ErrorNotice, Notice, Section, TextArea, TextField, useDirtyForm } from './ui';
+
+function LayoutPreviewCard({
+  layout,
+  selected,
+  primaryColor,
+  accentColor,
+  onSelect,
+  disabled,
+}: {
+  layout: (typeof LAYOUT_OPTIONS)[number];
+  selected: boolean;
+  primaryColor: string;
+  accentColor: string;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  const primary = /^#[a-fA-F0-9]{6}$/.test(primaryColor) ? primaryColor : '#2d4f9e';
+  const accent = /^#[a-fA-F0-9]{6}$/.test(accentColor) ? accentColor : '#1d7a4c';
+
+  return (
+    <button
+      type="button"
+      className={`layout-card ${selected ? 'selected' : ''}`}
+      onClick={onSelect}
+      disabled={disabled}
+      aria-pressed={selected}
+    >
+      <div
+        className="layout-preview"
+        style={{ '--primary': primary, '--accent': accent } as React.CSSProperties}
+      >
+        {layout.id === 'classic-grid' && <ClassicGridPreview />}
+        {layout.id !== 'classic-grid' && <PanelPreview layout={layout.id} />}
+      </div>
+      <div className="layout-info">
+        <strong>{layout.name}</strong>
+        <span>{layout.description}</span>
+      </div>
+    </button>
+  );
+}
+
+function ClassicGridPreview() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect
+        x="2"
+        y="2"
+        width="116"
+        height="76"
+        rx="1"
+        stroke="#ddd"
+        strokeWidth="0.5"
+        fill="#fff"
+      />
+      <rect x="4" y="4" width="112" height="2" fill="var(--primary)" />
+      <rect x="4" y="7" width="112" height="0.5" fill="var(--accent)" />
+      <rect x="4" y="10" width="30" height="8" fill="var(--primary)" opacity="0.2" />
+      <rect x="4" y="20" width="50" height="15" stroke="#ccc" strokeWidth="0.3" />
+      <rect x="56" y="20" width="30" height="15" stroke="#ccc" strokeWidth="0.3" />
+      <rect x="88" y="20" width="28" height="15" stroke="#ccc" strokeWidth="0.3" />
+      <rect x="4" y="37" width="70" height="25" stroke="#ccc" strokeWidth="0.3" />
+      <rect x="76" y="37" width="40" height="25" stroke="#ccc" strokeWidth="0.3" />
+      <rect x="4" y="64" width="112" height="12" stroke="#ccc" strokeWidth="0.3" />
+    </svg>
+  );
+}
+
+function PanelPreview({ layout }: { layout: Exclude<BiltyLayoutId, 'classic-grid'> }) {
+  const rows = {
+    'route-focus': [
+      ['Route'],
+      ['Consignor', 'Consignee'],
+      ['Goods', 'Charges'],
+      ['Dispatch', 'Insurance', 'References'],
+      ['Company', 'Terms'],
+    ],
+    'freight-ledger': [
+      ['Route', 'Dispatch'],
+      ['Consignor', 'Consignee'],
+      ['Charges', 'Goods'],
+      ['References', 'Insurance'],
+      ['Company', 'Terms'],
+    ],
+    'dispatch-sheet': [
+      ['Dispatch', 'Route'],
+      ['Consignor', 'Consignee'],
+      ['Goods', 'Insurance'],
+      ['References', 'Charges'],
+      ['Company', 'Terms'],
+    ],
+    'modern-panels': [
+      ['Route'],
+      ['Consignor', 'Consignee'],
+      ['Goods', 'References', 'Charges'],
+      ['Dispatch', 'Insurance'],
+      ['Company', 'Terms'],
+    ],
+  }[layout];
+  return (
+    <svg viewBox="0 0 180 127" aria-hidden="true">
+      <rect x="1" y="1" width="178" height="125" fill="white" stroke="#ddd" />
+      <rect x="7" y="7" width="166" height="2" fill="var(--primary)" />
+      <rect x="7" y="12" width="9" height="9" fill="var(--accent)" opacity="0.3" />
+      <text x="20" y="19" fontSize="5" fill="var(--primary)">
+        COMPANY NAME
+      </text>
+      {rows.map((row, r) =>
+        row.map((label, i) => {
+          const w = 166 / row.length;
+          return (
+            <g key={label}>
+              <rect
+                x={7 + i * w}
+                y={27 + r * 17}
+                width={w - 3}
+                height="14"
+                fill="#f5f7fa"
+                stroke="#cbd2db"
+                strokeWidth="0.4"
+              />
+              <rect
+                x={7 + i * w}
+                y={27 + r * 17}
+                width="1.5"
+                height="14"
+                fill={label === 'Charges' ? 'var(--primary)' : 'var(--accent)'}
+              />
+              <text x={11 + i * w} y={34 + r * 17} fontSize="4" fill="#334155">
+                {label}
+              </text>
+              <path
+                d={`M ${11 + i * w} ${37 + r * 17} h ${w - 15}`}
+                stroke="#cbd2db"
+                strokeWidth="0.6"
+              />
+            </g>
+          );
+        }),
+      )}
+      <path d="M 7 119 h 45 M 65 119 h 45 M 123 119 h 45" stroke="#aaa" strokeWidth="0.5" />
+    </svg>
+  );
+}
+
 export function CompanyForm({
   company,
   onSave,
@@ -183,6 +330,27 @@ export function CompanyForm({
               value={profile.accentColor}
               onChange={(e) => update('accentColor', e.target.value)}
             />
+          </div>
+        </Section>
+        <Section
+          title="Bilty layout"
+          description="Choose your A4 landscape layout. Previews show the arrangement. This choice is frozen when a bilty is issued."
+        >
+          <div className="layout-grid">
+            {LAYOUT_OPTIONS.map((layout) => (
+              <LayoutPreviewCard
+                key={layout.id}
+                layout={layout}
+                selected={(profile.biltyLayout ?? 'classic-grid') === layout.id}
+                primaryColor={profile.primaryColor}
+                accentColor={profile.accentColor}
+                onSelect={() => {
+                  setProfile((current) => ({ ...current, biltyLayout: layout.id }));
+                  setSaved(false);
+                }}
+                disabled={busy || readOnly}
+              />
+            ))}
           </div>
         </Section>
         <Section

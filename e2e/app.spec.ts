@@ -44,6 +44,7 @@ test('complete bilty journey with multiple references, audit, PDF and revocable 
   await expect(page.getByRole('heading', { name: 'DT/0001', exact: true })).toBeVisible();
   await expect(page.getByText('461754771222', { exact: false })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('issued-desktop.png'), fullPage: true });
+  await expect(page.getByLabel('Paper format')).toHaveCount(0);
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download PDF' }).click();
   const file = await downloaded;
@@ -130,6 +131,15 @@ test('address book and employee invitations enforce administrator access', async
     );
     await employee.goto('http://localhost:3101/settings');
     await expect(employee.getByText('Your administrator can update these settings.')).toBeVisible();
+    for (const name of [
+      'Classic Grid',
+      'Route Focus',
+      'Freight Ledger',
+      'Dispatch Sheet',
+      'Modern Panels',
+    ]) {
+      await expect(employee.getByRole('button', { name: new RegExp(name) })).toBeDisabled();
+    }
     await page.reload();
     await expect(
       page.getByRole('row').filter({ hasText: 'worker-flow@example.com' }).first(),
@@ -146,4 +156,47 @@ test('address book and employee invitations enforce administrator access', async
   } finally {
     await context.close();
   }
+});
+
+test('company layout previews select, save and reload at desktop and mobile widths', async ({
+  page,
+}, testInfo) => {
+  await signIn(page, 'layout-owner@example.com');
+  await setup(page, 'Layout Transport', 'LY/');
+  await page.goto('/settings');
+  const names = [
+    'Classic Grid',
+    'Route Focus',
+    'Freight Ledger',
+    'Dispatch Sheet',
+    'Modern Panels',
+  ];
+  await expect(page.getByRole('button', { name: /Classic Grid/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  for (const name of names) {
+    const card = page.getByRole('button', { name: new RegExp(name) });
+    await card.click();
+    await expect(card).toHaveAttribute('aria-pressed', 'true');
+    expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+      true,
+    );
+    await expect(page.locator('.layout-card[aria-pressed="true"]')).toHaveCount(1);
+  }
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect(page.getByText('Company settings saved.', { exact: false })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Modern Panels/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page
+    .locator('.layout-grid')
+    .screenshot({ path: testInfo.outputPath('layout-previews.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: /Route Focus/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
 });

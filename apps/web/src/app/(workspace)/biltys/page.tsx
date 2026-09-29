@@ -187,14 +187,18 @@ export default function BiltyListPage() {
                           <span className="cell-main">{row.data.fromLocation || '—'}</span>
                           <span className="cell-secondary">→ {row.data.toLocation || '—'}</span>
                         </td>
-                        <td data-label="Vehicle" className="mono">{row.data.vehicleNumber || '—'}</td>
+                        <td data-label="Vehicle" className="mono">
+                          {row.data.vehicleNumber || '—'}
+                        </td>
                         <td data-label="Status">
                           <Badge status={row.status} />
                           {row.isEdited && (
                             <span className="cell-secondary">Edited · v{row.version}</span>
                           )}
                         </td>
-                        <td data-label="Freight" className="align-right mono">{money(row.data.charges.freightPaise)}</td>
+                        <td data-label="Freight" className="align-right mono">
+                          {money(row.data.charges.freightPaise)}
+                        </td>
                         <td>
                           <Link
                             href={`/biltys/${row.id}`}

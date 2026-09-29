@@ -56,6 +56,19 @@ test('company profile refuses invalid inline logos instead of breaking later pri
   const { parseCompany } = await import('../src/modules/bilty/validation');
   assert.throws(() => parseCompany({ name: 'A', logoUrl: 'data:image/png;base64,YWJj' }));
 });
+test('company profile accepts valid biltyLayout values and rejects invalid ones', async () => {
+  const { parseCompany, BILTY_LAYOUTS } = await import('../src/modules/bilty/validation');
+  // All valid layouts should be accepted
+  for (const layout of BILTY_LAYOUTS) {
+    const result = parseCompany({ name: 'Test Co', biltyLayout: layout });
+    assert.equal(result.biltyLayout, layout);
+  }
+  // Invalid layout should be rejected
+  assert.throws(() => parseCompany({ name: 'Test Co', biltyLayout: 'invalid-layout' }));
+  // Missing layout is normalized for newly issued snapshots
+  const noLayout = parseCompany({ name: 'Test Co' });
+  assert.equal(noLayout.biltyLayout, 'classic-grid');
+});
 test('development can start without Google secrets but production requires them', () => {
   const dev = readConfig({ ...env, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' });
   assert.equal(dev.GOOGLE_CLIENT_ID, '');

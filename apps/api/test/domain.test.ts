@@ -168,3 +168,15 @@ test('unexpected fields and invalid enum values fail runtime validation', () => 
   assert.throws(() => domain.createDraft(id, actor, { number: 'injected' }, now), /number/);
   assert.throws(() => domain.createDraft(id, actor, { freightType: 'credit' }, now), /freightType/);
 });
+test('biltyLayout selection is frozen into company snapshot on issue', () => {
+  const layoutCompany = { ...company, biltyLayout: 'modern-panels' as const };
+  const b = domain.issueBilty(draft(), 1, layoutCompany, 'EX/1', actor, later).bilty;
+  assert.equal(b.companySnapshot?.biltyLayout, 'modern-panels');
+});
+test('legacy company without biltyLayout freezes the classic default on issue', () => {
+  const legacyCompany = { ...company };
+  delete (legacyCompany as { biltyLayout?: string }).biltyLayout;
+  const b = domain.issueBilty(draft(), 1, legacyCompany, 'EX/1', actor, later).bilty;
+  assert.equal(b.companySnapshot?.biltyLayout, 'classic-grid');
+  assert.equal(b.status, 'issued');
+});

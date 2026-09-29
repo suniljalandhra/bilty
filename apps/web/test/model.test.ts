@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { blankBilty, parseRupees, paiseInput, reconcileData } from '../src/lib/model.ts';
+import {
+  blankBilty,
+  blankCompany,
+  parseRupees,
+  paiseInput,
+  reconcileData,
+} from '../src/lib/model.ts';
 
 test('currency input converts decimal rupees to exact paise and preserves empty freight', () => {
   assert.equal(parseRupees('0.29'), 29);
@@ -44,4 +50,8 @@ test('reconciliation flags competing edits and does not silently replace either 
   assert.deepEqual(result.conflicts, ['remarks']);
   assert.equal(result.data.remarks, 'Local');
   assert.equal(latest.remarks, 'Remote');
+});
+
+test('new companies start with the Classic Grid layout', () => {
+  assert.equal(blankCompany().biltyLayout, 'classic-grid');
 });

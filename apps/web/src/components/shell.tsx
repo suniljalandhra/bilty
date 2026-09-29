@@ -2,14 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  ContactRound,
-  FileText,
-  Menu,
-  Settings,
-  ShieldCheck,
-  X,
-} from 'lucide-react';
+import { ContactRound, FileText, Menu, Settings, ShieldCheck, X } from 'lucide-react';
 import { api, errorMessage } from '@/lib/api';
 import type { Company } from '@/lib/model';
 import { AuthGate, useSession } from './session';
@@ -54,21 +47,37 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <nav aria-label="Main navigation">
             <div className="nav-label">Workspace</div>
-            <Link href="/biltys" className={pathname.startsWith('/biltys') ? 'active' : ''} onClick={() => setMobileNavOpen(false)}>
+            <Link
+              href="/biltys"
+              className={pathname.startsWith('/biltys') ? 'active' : ''}
+              onClick={() => setMobileNavOpen(false)}
+            >
               <FileText aria-hidden="true" />
               <span>Bilty book</span>
             </Link>
-            <Link href="/parties" className={pathname === '/parties' ? 'active' : ''} onClick={() => setMobileNavOpen(false)}>
+            <Link
+              href="/parties"
+              className={pathname === '/parties' ? 'active' : ''}
+              onClick={() => setMobileNavOpen(false)}
+            >
               <ContactRound aria-hidden="true" />
               <span>Address book</span>
             </Link>
             <div className="nav-label nav-label-spaced">Administration</div>
-            <Link href="/settings" className={pathname === '/settings' ? 'active' : ''} onClick={() => setMobileNavOpen(false)}>
+            <Link
+              href="/settings"
+              className={pathname === '/settings' ? 'active' : ''}
+              onClick={() => setMobileNavOpen(false)}
+            >
               <Settings aria-hidden="true" />
               <span>Company settings</span>
             </Link>
             {user?.role === 'admin' && (
-              <Link href="/team" className={pathname === '/team' ? 'active' : ''} onClick={() => setMobileNavOpen(false)}>
+              <Link
+                href="/team"
+                className={pathname === '/team' ? 'active' : ''}
+                onClick={() => setMobileNavOpen(false)}
+              >
                 <ShieldCheck aria-hidden="true" />
                 <span>Team & access</span>
               </Link>

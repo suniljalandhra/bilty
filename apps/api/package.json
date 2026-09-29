@@ -5,8 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/domain.test.ts test/*unit.test.ts",
-    "test:integration": "node --import tsx --test --test-concurrency=1 test/*postgres.test.ts",
+    "test": "pnpm --filter @bilty/shared-types build && node --import tsx --test test/domain.test.ts test/*unit.test.ts",
+    "test:integration": "pnpm --filter @bilty/shared-types build && node --import tsx --test --test-concurrency=1 test/*postgres.test.ts",
     "db:migrate": "node --import tsx src/database/migrate.ts",
     "start": "node dist/main.js"
   },
