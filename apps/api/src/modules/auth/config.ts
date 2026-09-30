@@ -10,6 +10,9 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
       PUBLIC_API_URL: z.url().optional(),
       JWT_SECRET: z.string().min(32),
       NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+      EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+      RESEND_API_KEY: z.string().trim().default(''),
+      EMAIL_FROM: z.union([z.email(), z.literal('')]).default(''),
       PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     })
     .parse(env);
@@ -41,6 +44,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   if (c.NODE_ENV === 'production' && (!c.GOOGLE_CLIENT_ID || !c.GOOGLE_CLIENT_SECRET))
     throw new Error('Google OAuth credentials required in production');
+  if (c.NODE_ENV === 'production' && c.EMAIL_PROVIDER !== 'resend')
+    throw new Error('Production requires Resend email delivery');
+  if (c.EMAIL_PROVIDER === 'resend' && (!c.RESEND_API_KEY || !c.EMAIL_FROM))
+    throw new Error('Resend requires RESEND_API_KEY and EMAIL_FROM');
   return c;
 }
 export type AuthConfig = ReturnType<typeof readConfig>;

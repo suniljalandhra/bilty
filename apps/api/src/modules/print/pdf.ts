@@ -249,7 +249,14 @@ async function renderClassicGridLayout(
   const jurisdictionText = `Subject to ${jurisdiction} Jurisdiction`;
   pdf.font('Body').fontSize(9);
   const jurisdictionWidth = pdf.widthOfString(jurisdictionText);
-  drawText(jurisdictionText, margin + (contentWidth - jurisdictionWidth) / 2, y + 8, 9, false, '#666666');
+  drawText(
+    jurisdictionText,
+    margin + (contentWidth - jurisdictionWidth) / 2,
+    y + 8,
+    9,
+    false,
+    '#666666',
+  );
 
   // Company Logo and Name
   let logoX = margin + 10;
@@ -300,7 +307,11 @@ async function renderClassicGridLayout(
 
   // Bilty Number Box (prominent, left side)
   pdf.rect(margin, y, biltyBoxWidth, biltyRowHeight).fill(lightBg);
-  pdf.strokeColor(primaryColor).lineWidth(2).rect(margin, y, biltyBoxWidth, biltyRowHeight).stroke();
+  pdf
+    .strokeColor(primaryColor)
+    .lineWidth(2)
+    .rect(margin, y, biltyBoxWidth, biltyRowHeight)
+    .stroke();
   drawLabel('BILTY / LR NO.', margin + 10, y + 5, 9);
   const biltyNumber = b.number || 'DRAFT';
   drawText(biltyNumber, margin + 10, y + 18, 18, true, primaryColor);
@@ -308,11 +319,23 @@ async function renderClassicGridLayout(
   // Date Box (right of bilty number)
   const dateBoxX = margin + biltyBoxWidth + 8;
   pdf.rect(dateBoxX, y, dateBoxWidth, biltyRowHeight).fill('#ffffff');
-  pdf.strokeColor(borderColor).lineWidth(1).rect(dateBoxX, y, dateBoxWidth, biltyRowHeight).stroke();
+  pdf
+    .strokeColor(borderColor)
+    .lineWidth(1)
+    .rect(dateBoxX, y, dateBoxWidth, biltyRowHeight)
+    .stroke();
   drawLabel('Date:', dateBoxX + 10, y + 8, 9);
   const dateStr = b.issuedAt
-    ? new Date(b.issuedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-    : new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    ? new Date(b.issuedAt).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : new Date(b.createdAt).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
   drawValue(dateStr, dateBoxX + 50, y + 6, 11);
 
   // Vehicle info in date box area
@@ -359,7 +382,16 @@ async function renderClassicGridLayout(
   drawSectionBox(consigneeX, y, partyWidth, partyRowHeight, 'Consignee (Receiver)');
   drawValue(d.consignee.name || '-', consigneeX + 8, y + 22, 11);
   if (d.consignee.address) {
-    drawTextWrap(d.consignee.address, consigneeX + 8, y + 36, partyWidth - 16, 8, false, '#444444', 18);
+    drawTextWrap(
+      d.consignee.address,
+      consigneeX + 8,
+      y + 36,
+      partyWidth - 16,
+      8,
+      false,
+      '#444444',
+      18,
+    );
   }
   if (d.consignee.gstin) {
     drawLabel('GSTIN:', consigneeX + 8, y + 56, 8);
@@ -419,7 +451,16 @@ async function renderClassicGridLayout(
   const col2Value = margin + goodsWidth * 0.5 + 65;
 
   drawLabel('Description:', labelCol, goodsContentY + 4, 8);
-  drawTextWrap(d.goodsDescription || '-', valueCol, goodsContentY + 2, goodsWidth - 85, 9, false, '#333333', 22);
+  drawTextWrap(
+    d.goodsDescription || '-',
+    valueCol,
+    goodsContentY + 2,
+    goodsWidth - 85,
+    9,
+    false,
+    '#333333',
+    22,
+  );
 
   // Row 2: Packages & Packing
   const row2Y = goodsContentY + 26;
@@ -436,14 +477,25 @@ async function renderClassicGridLayout(
   drawValue(actualWt, valueCol, row3Y - 2, 10);
 
   drawLabel('Chargeable Wt:', col2Label, row3Y, 8);
-  const chargeWt = d.chargeableWeight ? `${d.chargeableWeight.value} ${d.chargeableWeight.unit}` : '-';
+  const chargeWt = d.chargeableWeight
+    ? `${d.chargeableWeight.value} ${d.chargeableWeight.unit}`
+    : '-';
   drawValue(chargeWt, col2Value, row3Y - 2, 10);
 
   // Row 4: E-way & Invoice
   const row4Y = row3Y + 16;
   if (d.ewayBills.length > 0) {
     drawLabel('E-way Bill:', labelCol, row4Y, 8);
-    drawTextWrap(d.ewayBills.join(', '), valueCol, row4Y - 2, goodsWidth * 0.45 - 10, 9, false, '#333333', 12);
+    drawTextWrap(
+      d.ewayBills.join(', '),
+      valueCol,
+      row4Y - 2,
+      goodsWidth * 0.45 - 10,
+      9,
+      false,
+      '#333333',
+      12,
+    );
   }
   if (d.invoices.length > 0) {
     drawLabel('Invoice No:', col2Label, row4Y, 8);

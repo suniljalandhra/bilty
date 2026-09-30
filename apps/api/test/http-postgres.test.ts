@@ -295,7 +295,10 @@ test('email/password registration, verification, login, reset and resend form on
       '',
     );
     assert.equal(response.status, 201);
-    assert.deepEqual(await response.json(), { message: 'Verification email sent' });
+    assert.deepEqual(await response.json(), {
+      message:
+        'If eligible, you will receive a verification email. If it does not arrive, try again later.',
+    });
   });
 
   assert.equal(
@@ -424,4 +427,120 @@ test('Google-authenticated users can add one password without exposing account t
     (await request('/auth/add-password', 'POST', { password: 'AnotherGoogle2!' }, token)).status,
     409,
   );
+});
+
+test('verification requests stop after three per hour without invalidating the last link', async () => {
+  const email = 'limited@example.com';
+  await captureEmailToken('verify-email', async () => {
+    assert.equal(
+      (
+        await request(
+          '/auth/register',
+          'POST',
+          { email, password: 'SecurePass1!', name: 'Limited' },
+          '',
+        )
+      ).status,
+      201,
+    );
+  });
+  let last = '';
+  for (let i = 0; i < 2; i++)
+    last = await captureEmailToken('verify-email', async () => {
+      assert.equal((await request('/auth/resend-verification', 'POST', { email }, '')).status, 200);
+    });
+  const before = await db.query(
+    'SELECT token_hash FROM email_tokens WHERE user_id=(SELECT id FROM users WHERE email=$1)',
+    [email],
+  );
+  const replies = await Promise.all(
+    Array.from({ length: 5 }, () => request('/auth/resend-verification', 'POST', { email }, '')),
+  );
+  assert.ok(replies.every((r) => r.status === 200));
+  assert.deepEqual(
+    await db.query(
+      'SELECT token_hash FROM email_tokens WHERE user_id=(SELECT id FROM users WHERE email=$1)',
+      [email],
+    ),
+    before,
+  );
+  assert.equal((await request('/auth/verify-email', 'POST', { token: last }, '')).status, 200);
+});
+
+test('email delivery happens after commit, provider failure is private, and resend recovers', async () => {
+  const { AuthEmailSender } = await import('../src/modules/auth/email');
+  const { hashToken } = await import('../src/modules/auth/tokens');
+  let reject = true;
+  const deliveries: { token: string; text: string }[] = [];
+  const mailer = new AuthEmailSender(
+    {
+      ...config,
+      EMAIL_PROVIDER: 'resend',
+      RESEND_API_KEY: 'test-only',
+      EMAIL_FROM: 'noreply@mail.winggroup.org',
+    },
+    async (_url, options) => {
+      const body = JSON.parse(options!.body as string);
+      const token = body.text.match(/token=([A-Za-z0-9_-]+)/)[1];
+      assert.equal(
+        (await db.query('SELECT 1 FROM email_tokens WHERE token_hash=$1', [hashToken(token)]))
+          .length,
+        1,
+      );
+      if (reject) return Response.json({ message: 'secret-provider-error' }, { status: 503 });
+      deliveries.push({ token, text: body.text });
+      return Response.json({ id: 'test-delivery' });
+    },
+  );
+  const auth = new AuthService(db, config, google, mailer);
+  const email = 'delivery@example.com';
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    errors.push(args.join(' '));
+  };
+  try {
+    await auth.register(email, 'SecurePass1!', 'Delivery');
+  } finally {
+    console.error = original;
+  }
+  assert.equal(errors.length, 1);
+  assert.doesNotMatch(errors.join(' '), /secret-provider-error|delivery@example.com|token=/);
+  assert.equal(deliveries.length, 0);
+  reject = false;
+  await auth.resendVerification(email);
+  const session = await auth.verifyEmail(deliveries[0]!.token);
+  const principal = await auth.authenticate(session.accessToken);
+  await auth.forgotPassword(email);
+  assert.match(deliveries[1]!.text, /reset-password/);
+  await auth.resetPassword(deliveries[1]!.token, 'ChangedPass2!');
+  await assert.rejects(auth.authenticate(session.accessToken));
+  assert.ok(await auth.loginWithPassword(email, 'ChangedPass2!'));
+  assert.ok(principal.userId);
+});
+
+test('reset email limit is atomic across service instances and expires after an hour', async () => {
+  const { createHmac } = await import('node:crypto');
+  let sent = 0;
+  const mailer = {
+    async send() {
+      sent++;
+    },
+  };
+  const auth = new AuthService(db, config, google, mailer);
+  const other = new AuthService(db, config, google, mailer);
+  const email = 'delivery@example.com';
+  const key = createHmac('sha256', config.JWT_SECRET).update(`reset:${email}`).digest('hex');
+  await db.query('DELETE FROM auth_email_limits WHERE key=$1', [key]);
+  await Promise.all(
+    Array.from({ length: 8 }, (_, i) => (i % 2 ? auth : other).forgotPassword(email)),
+  );
+  assert.equal(sent, 3);
+  await db.query("UPDATE auth_email_limits SET expires_at=now()-interval '1 second' WHERE key=$1", [
+    key,
+  ]);
+  await auth.forgotPassword(email);
+  assert.equal(sent, 4);
+  await auth.forgotPassword('missing-delivery@example.com');
+  assert.equal(sent, 4);
 });

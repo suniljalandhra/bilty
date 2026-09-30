@@ -71,3 +71,7 @@ Company profile logoUrl accepts a validated inline PNG/JPEG up to 200000 encoded
 The local development API can start with blank Google credentials and reports googleConfigured=false from /health; sign-in fails closed with 503 until configured. Production refuses to start without credentials.
 
 Company print profiles accept `biltyLayout`: `classic-grid` (default), `route-focus`, `freight-ledger`, `dispatch-sheet`, or `modern-panels`. Settings affect drafts and future issues. Issued biltys and share links use their frozen company layout, logo and colours. Historic profiles and snapshots without a layout render as Classic Grid.
+
+## Authentication email delivery
+
+Signup verification, verification resend and password reset support Resend delivery. See [email setup](email.md) for configuration, rate limits, failure handling and production requirements. Public responses are generic acknowledgements, not guarantees of inbox delivery.

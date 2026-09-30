@@ -7,6 +7,8 @@ import { AuthTables1790000000001 } from './migrations/1790000000001-AuthTables';
 import { PdfShares1790000000002 } from './migrations/1790000000002-PdfShares';
 import { PasswordAuth1790000000003 } from './migrations/1790000000003-PasswordAuth';
 
+import { AuthEmailLimits1790000000004 } from './migrations/1790000000004-AuthEmailLimits';
+
 export function makeDataSource(url: string): DataSource {
   return new DataSource({
     type: 'postgres',
@@ -18,6 +20,7 @@ export function makeDataSource(url: string): DataSource {
       AuthTables1790000000001,
       PdfShares1790000000002,
       PasswordAuth1790000000003,
+      AuthEmailLimits1790000000004,
     ],
     migrationsTransactionMode: 'all',
     extra: { max: 16, connectionTimeoutMillis: 5000 },

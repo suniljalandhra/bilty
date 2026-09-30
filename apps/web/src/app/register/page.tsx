@@ -37,10 +37,12 @@ export default function RegisterPage() {
           {sent ? (
             <>
               <Notice>
-                Check your inbox for a verification link. For privacy, we show the same message if
-                this email is already registered.
+                Check your inbox and spam folder for a verification link. If no email arrives,
+                request a new link later. For privacy, we show the same message if this email is
+                already registered.
               </Notice>
               <div className="auth-links auth-links-single">
+                <Link href="/resend-verification">Request a new verification link</Link>
                 <Link href="/login">Back to sign in</Link>
               </div>
             </>

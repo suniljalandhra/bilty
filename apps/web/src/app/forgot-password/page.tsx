@@ -31,7 +31,10 @@ export default function ForgotPasswordPage() {
           <h1>Find your way back in.</h1>
           <p>Enter your account email and we’ll send a time-limited reset link.</p>
           {sent ? (
-            <Notice>If an account exists for that email, a reset link is on its way.</Notice>
+            <Notice>
+              If eligible, you will receive a reset link. Check your spam folder too. If no email
+              arrives, try again later.
+            </Notice>
           ) : (
             <form className="auth-form" onSubmit={(event) => void submit(event)}>
               <ErrorNotice message={error} />

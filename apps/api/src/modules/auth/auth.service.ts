@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { AuthConfig } from './config';
 import type { GoogleProvider } from './google';
 import { hashToken, opaqueToken, tokenPattern, TokenService } from './tokens';
+import { AuthEmailSender, type AuthMailer, type AuthEmailKind } from './email';
 import { hashPassword, verifyPassword } from './password';
 import type { Principal } from './access';
 import { parseCompany } from '../bilty/validation';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly db: DataSource,
     private readonly config: AuthConfig,
     private readonly google: GoogleProvider,
+    private readonly mailer: AuthMailer = new AuthEmailSender(config),
   ) {
     this.tokens = new TokenService(config);
   }
@@ -224,6 +226,7 @@ export class AuthService {
 
   async register(email: string, password: string, name: string): Promise<void> {
     email = email.toLowerCase().trim();
+    if (!(await this.allowEmail('verification', email))) return;
     const passwordHash = await hashPassword(password);
 
     const delivery = await this.db.transaction(async (tx) => {
@@ -247,7 +250,7 @@ export class AuthService {
       );
       return { email, token };
     });
-    if (delivery) this.logEmail('verification', delivery.email, delivery.token);
+    if (delivery) await this.deliverEmail('verification', delivery.email, delivery.token);
   }
 
   async verifyEmail(token: string) {
@@ -280,6 +283,7 @@ export class AuthService {
 
   async forgotPassword(email: string): Promise<void> {
     email = email.toLowerCase().trim();
+    if (!(await this.allowEmail('reset', email))) return;
     const delivery = await this.db.transaction(async (tx) => {
       const [user] = await tx.query(
         'SELECT id,email FROM users WHERE email=$1 AND password_hash IS NOT NULL FOR UPDATE',
@@ -297,7 +301,7 @@ export class AuthService {
       );
       return { email: user.email, token };
     });
-    if (delivery) this.logEmail('reset', delivery.email, delivery.token);
+    if (delivery) await this.deliverEmail('reset', delivery.email, delivery.token);
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -340,6 +344,7 @@ export class AuthService {
 
   async resendVerification(email: string): Promise<void> {
     email = email.toLowerCase().trim();
+    if (!(await this.allowEmail('verification', email))) return;
     const delivery = await this.db.transaction(async (tx) => {
       const [user] = await tx.query(
         'SELECT id,email FROM users WHERE email=$1 AND password_hash IS NOT NULL AND email_verified_at IS NULL FOR UPDATE',
@@ -357,30 +362,39 @@ export class AuthService {
       );
       return { email: user.email, token };
     });
-    if (delivery) this.logEmail('verification', delivery.email, delivery.token);
+    if (delivery) await this.deliverEmail('verification', delivery.email, delivery.token);
   }
 
-  private logEmail(type: 'verification' | 'reset', email: string, token: string) {
-    const url =
-      type === 'verification'
-        ? `${this.config.FRONTEND_URL}/verify-email?token=${token}`
-        : `${this.config.FRONTEND_URL}/reset-password?token=${token}`;
-    const expiry = type === 'verification' ? '24 hours' : '1 hour';
-    const subject =
-      type === 'verification' ? 'Verify your Bilty account' : 'Reset your Bilty password';
+  private async allowEmail(kind: AuthEmailKind, email: string): Promise<boolean> {
+    // Shared across API instances; HMAC avoids storing raw addresses or guessable hashes.
+    const key = createHmac('sha256', this.config.JWT_SECRET)
+      .update(`${kind}:${email}`)
+      .digest('hex');
+    await this.db.query('DELETE FROM auth_email_limits WHERE expires_at <= now()');
+    const rows = await this.db.query(
+      `
+      INSERT INTO auth_email_limits(key, attempts, expires_at)
+      VALUES ($1, 1, now() + interval '1 hour')
+      ON CONFLICT (key) DO UPDATE SET
+        attempts = CASE WHEN auth_email_limits.expires_at <= now() THEN 1 ELSE auth_email_limits.attempts + 1 END,
+        expires_at = CASE WHEN auth_email_limits.expires_at <= now() THEN now() + interval '1 hour' ELSE auth_email_limits.expires_at END
+      WHERE auth_email_limits.expires_at <= now() OR auth_email_limits.attempts < 3
+      RETURNING key`,
+      [key],
+    );
+    return rows.length > 0;
+  }
 
-    console.log(`
-========================================
-${type.toUpperCase()} EMAIL
-To: ${email}
-========================================
-Subject: ${subject}
-
-Click the link below:
-${url}
-
-This link expires in ${expiry}.
-========================================
-`);
+  private async deliverEmail(kind: AuthEmailKind, email: string, token: string): Promise<void> {
+    try {
+      // Transactions are committed before contacting an external service.
+      await this.mailer.send(kind, email, token);
+    } catch {
+      // Keep public responses identical for existing and missing accounts.
+      // Users can request a new link; never log a bearer token or provider error body.
+      console.error(
+        `Authentication email delivery failed (${kind}); check email provider configuration and quota`,
+      );
+    }
   }
 }

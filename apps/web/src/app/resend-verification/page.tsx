@@ -34,7 +34,8 @@ export default function ResendVerificationPage() {
           <p>Enter the email address you used to create your Bilty account.</p>
           {sent ? (
             <Notice>
-              If an unverified account exists for that email, a new link is on its way.
+              If eligible, you will receive a verification link. Check your spam folder too. If no
+              email arrives, try again later.
             </Notice>
           ) : (
             <form className="auth-form" onSubmit={(event) => void submit(event)}>

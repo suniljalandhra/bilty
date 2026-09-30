@@ -82,7 +82,10 @@ export class AuthController {
   @Public() @Post('register') @HttpCode(201) async register(@Body() raw: unknown) {
     const { email, password, name } = registerBody.parse(raw);
     await this.auth.register(email, password, name);
-    return { message: 'Verification email sent' };
+    return {
+      message:
+        'If eligible, you will receive a verification email. If it does not arrive, try again later.',
+    };
   }
   @Public() @Post('verify-email') @HttpCode(200) async verifyEmail(
     @Body() raw: unknown,
@@ -105,7 +108,10 @@ export class AuthController {
   @Public() @Post('forgot-password') @HttpCode(200) async forgotPassword(@Body() raw: unknown) {
     const { email } = emailBody.parse(raw);
     await this.auth.forgotPassword(email);
-    return { message: 'If the account exists, a reset email was sent' };
+    return {
+      message:
+        'If eligible, you will receive a reset email. If it does not arrive, try again later.',
+    };
   }
   @Public() @Post('reset-password') @HttpCode(200) async resetPassword(@Body() raw: unknown) {
     const { token, password } = resetPasswordBody.parse(raw);
@@ -125,7 +131,10 @@ export class AuthController {
   ) {
     const { email } = emailBody.parse(raw);
     await this.auth.resendVerification(email);
-    return { message: 'If the account exists and is unverified, an email was sent' };
+    return {
+      message:
+        'If eligible, you will receive a verification email. If it does not arrive, try again later.',
+    };
   }
   @Public() @Post('refresh') @HttpCode(200) async refresh(
     @Req() req: AuthedRequest,

@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { DataSource } from 'typeorm';
 import type { Request, Response, NextFunction } from 'express';
+import type { AuthMailer } from './modules/auth/email';
 import { AuthService } from './modules/auth/auth.service';
 import type { AuthConfig } from './modules/auth/config';
 import { GoogleOAuthProvider, type GoogleProvider } from './modules/auth/google';
@@ -26,8 +27,9 @@ export async function createApp(
   db: DataSource,
   config: AuthConfig,
   google: GoogleProvider = new GoogleOAuthProvider(config),
+  mailer?: AuthMailer,
 ) {
-  const auth = new AuthService(db, config, google);
+  const auth = new AuthService(db, config, google, mailer);
   @Controller('health')
   class HealthController {
     @Public() @Get() async health() {

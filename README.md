@@ -4,7 +4,7 @@ A locally runnable digital bilty / goods-receipt application, with a Next.js fro
 
 ## Implemented V1
 
-- Google sign-in, first-company setup, email-bound invitation links, rotating sessions and immediate membership revocation.
+- Google sign-in, email/password signup and reset with configurable Resend delivery, first-company setup, email-bound invitation links, rotating sessions and immediate membership revocation.
 - Company branding/settings, administrator and employee permissions, last-admin protection and an address book with archival.
 - Bilty book with server-side search, status/date filters and pagination; complete create/edit/issue/cancel flows and audit history.
 - Multiple e-way bill numbers and invoices per bilty, independent weights/CBM, insurance, charges, exact paise totals and atomic numbering.
@@ -13,7 +13,7 @@ A locally runnable digital bilty / goods-receipt application, with a Next.js fro
 - Expiring, revocable PDF links tied to a fixed issued version, plus a user-controlled WhatsApp compose link.
 - Responsive desktop/mobile UI and Docker Compose startup for the complete application.
 
-E-way/invoice document attachments, government verification, email delivery and assisted onboarding remain outside V1. The Claude Design HTML export is a visual reference; production UI source is in `apps/web`.
+E-way/invoice document attachments, government verification and assisted onboarding remain outside V1. The Claude Design HTML export is a visual reference; production UI source is in `apps/web`.
 
 ## First-time setup
 
@@ -118,6 +118,10 @@ This keeps PostgreSQL, migrations and the API in Docker while Next.js reloads lo
 4. Open http://localhost:3001/login and choose **Continue with Google**. First-time users create their company and become its administrator. Existing employees join through the invitation link from their administrator.
 
 Use `localhost` consistently in your browser and settings; `127.0.0.1` is a different origin for cookie/CORS purposes. There is no seeded password or demo login. Automated tests substitute the external Google provider; live consent must be verified with your own client. `googleConfigured: true` means credentials are present, not that Google has accepted them.
+
+## Authentication email
+
+See [Resend setup and delivery behavior](docs/email.md) for verification and password-reset emails. Development defaults to console output; production requires `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` and `EMAIL_FROM`.
 
 ## Environment settings and ports
 
