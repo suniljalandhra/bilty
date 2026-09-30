@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="bb-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="50%" stop-color="#00B2FE"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="32" fill="url(#bb-gradient)"/>
+  <text x="90" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="80" font-weight="700" fill="white" text-anchor="middle" letter-spacing="-4">BB</text>
+</svg>

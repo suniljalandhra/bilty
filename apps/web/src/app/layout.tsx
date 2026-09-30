@@ -1,17 +1,22 @@
 import type { Metadata } from 'next';
 import { SessionProvider } from '@/components/session';
 import './globals.css';
-import './night-dispatch.css';
+
 export const metadata: Metadata = {
-  title: { default: 'Bilty · Transport workspace', template: '%s · Bilty' },
-  description: 'Your company’s digital bilty book.',
+  title: { default: 'BiltyBook · Transport workspace', template: '%s · BiltyBook' },
+  description: "Your company's digital bilty book.",
   robots: { index: false, follow: false },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/apple-icon.svg',
+  },
 };
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <head>
-        <meta name="color-scheme" content="dark" />
+        <meta name="color-scheme" content="light dark" />
       </head>
       <body>
         <SessionProvider>{children}</SessionProvider>
