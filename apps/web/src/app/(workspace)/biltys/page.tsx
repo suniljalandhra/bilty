@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, Plus, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Plus } from 'lucide-react';
 import type { BiltyRecord } from '@bilty/shared-types';
 import { api, errorMessage } from '@/lib/api';
 import { dateOnly, money } from '@/lib/model';
@@ -12,6 +12,7 @@ import {
   Loading,
   PageHeader,
   Pagination,
+  SearchField,
   TextField,
 } from '@/components/ui';
 const LIMIT = 25;
@@ -59,7 +60,6 @@ export default function BiltyListPage() {
   return (
     <>
       <PageHeader
-        eyebrow="YOUR OPERATIONS, IN ORDER"
         title="Bilty book"
         description="Every consignment. Every detail. All in one place."
         actions={
@@ -71,16 +71,12 @@ export default function BiltyListPage() {
       />
       <div className="card">
         <div className="list-toolbar">
-          <div className="search-field">
-            <TextField
-              label="Search biltys"
-              type="search"
-              placeholder="Bilty no., party, route or vehicle"
-              className="search-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <SearchField
+            label="Search biltys"
+            placeholder="Bilty no., party, route or vehicle"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <div className="tabs" aria-label="Filter by status">
             {['', 'draft', 'issued', 'cancelled'].map((value) => (
               <button
@@ -98,12 +94,8 @@ export default function BiltyListPage() {
           </div>
         </div>
         <div className="date-filters">
-          <div className="filter-heading">
-            <SlidersHorizontal aria-hidden="true" />
-            <span>Refine results</span>
-          </div>
           <TextField
-            label="Created from"
+            label="From"
             type="date"
             value={from}
             max={to || undefined}
@@ -113,7 +105,7 @@ export default function BiltyListPage() {
             }}
           />
           <TextField
-            label="Created to"
+            label="To"
             type="date"
             value={to}
             min={from || undefined}
@@ -137,7 +129,6 @@ export default function BiltyListPage() {
               Clear filters
             </button>
           )}
-          <span className="hint date-note">Newest first</span>
         </div>
         <ErrorNotice message={error} />
         {error && (

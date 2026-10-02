@@ -6,10 +6,6 @@ export const metadata: Metadata = {
   title: { default: 'BiltyBook · Transport workspace', template: '%s · BiltyBook' },
   description: "Your company's digital bilty book.",
   robots: { index: false, follow: false },
-  icons: {
-    icon: '/icon.svg',
-    apple: '/apple-icon.svg',
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -78,7 +78,6 @@ export default function TeamPage() {
   return (
     <>
       <PageHeader
-        eyebrow="WORK BETTER TOGETHER"
         title="Team & access"
         description="Invite your team and manage who can access the workspace."
       />

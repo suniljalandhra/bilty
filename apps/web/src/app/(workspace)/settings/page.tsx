@@ -18,7 +18,6 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="WORKSPACE"
         title="Company settings"
         description="Your company identity, document appearance and numbering."
       />
@@ -34,27 +33,29 @@ export default function SettingsPage() {
       ) : (
         !error && <Loading />
       )}
-      <Section
-        title="Account security"
-        description="End your sessions on every device, including this one."
-      >
-        <button
-          disabled={busy}
-          onClick={async () => {
-            if (!window.confirm('Sign out of Bilty on all devices?')) return;
-            setBusy(true);
-            try {
-              await logout(true);
-            } catch (failure) {
-              setError(errorMessage(failure));
-            } finally {
-              setBusy(false);
-            }
-          }}
+      <div className="card">
+        <Section
+          title="Account security"
+          description="End your sessions on every device, including this one."
         >
-          Sign out on all devices
-        </button>
-      </Section>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              if (!window.confirm('Sign out of Bilty on all devices?')) return;
+              setBusy(true);
+              try {
+                await logout(true);
+              } catch (failure) {
+                setError(errorMessage(failure));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Sign out on all devices
+          </button>
+        </Section>
+      </div>
     </>
   );
 }

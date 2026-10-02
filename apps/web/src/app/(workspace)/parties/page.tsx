@@ -11,6 +11,7 @@ import {
   Notice,
   PageHeader,
   Pagination,
+  SearchField,
   Select,
   TextArea,
   TextField,
@@ -117,12 +118,11 @@ export default function PartiesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="YOUR PEOPLE"
         title="Address book"
         description="Save consignors and consignees for quicker, more consistent biltys."
         actions={
           <button className="primary" onClick={() => edit(null)}>
-            ＋ Add contact
+            + Add contact
           </button>
         }
       />
@@ -130,15 +130,12 @@ export default function PartiesPage() {
       {message && <Notice>{message}</Notice>}
       <div className="card">
         <div className="list-toolbar">
-          <div className="search-field">
-            <TextField
-              label="Find contacts on this page"
-              type="search"
-              placeholder="Name, address, GSTIN or phone"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <SearchField
+            label="Find contacts"
+            placeholder="Name, address, GSTIN or phone"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <Select label="Contact type" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="">All contacts</option>
             <option value="consignor">Consignors</option>
