@@ -11,13 +11,14 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { paiseInput, parseRupees } from '@/lib/model';
-export function Brand() {
+export function Brand({ showCaption = true }: { showCaption?: boolean }) {
   return (
     <Link href="/biltys" className="brand">
-      <span className="brand-mark">B</span>
-      <span>
-        Bilty<span className="brand-caption">TRANSPORT WORKSPACE</span>
+      <span className="brand-logo">
+        <span className="brand-bilty">Bilty</span>
+        <span className="brand-book">Book</span>
       </span>
+      {showCaption && <span className="brand-caption">TRANSPORT WORKSPACE</span>}
     </Link>
   );
 }
@@ -125,6 +126,40 @@ export function TextField({
         {...props}
         id={id}
       />
+    </Field>
+  );
+}
+export function SearchField({
+  label,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  const generatedId = useId(),
+    id = props.id || generatedId;
+  return (
+    <Field label={label} controlId={id} className="search-field-wrap">
+      <div className="search-input-wrap">
+        <svg
+          className="search-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+          />
+        </svg>
+        <input
+          type="search"
+          maxLength={500}
+          {...props}
+          id={id}
+        />
+      </div>
     </Field>
   );
 }

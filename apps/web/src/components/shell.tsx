@@ -2,7 +2,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ContactRound, FileText, Menu, Settings, ShieldCheck, X } from 'lucide-react';
+import {
+  ChevronUp,
+  ContactRound,
+  FileText,
+  HelpCircle,
+  LogOut,
+  Menu,
+  Settings,
+  ShieldCheck,
+  User,
+  X,
+} from 'lucide-react';
 import { api, errorMessage } from '@/lib/api';
 import type { Company } from '@/lib/model';
 import { AuthGate, useSession } from './session';
@@ -13,7 +24,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [mobileNavOpen, setMobileNavOpen] = useState(false);
+    [mobileNavOpen, setMobileNavOpen] = useState(false),
+    [profileOpen, setProfileOpen] = useState(false);
   useEffect(() => {
     if (user?.companyId)
       void api<Company>('/company')
@@ -22,7 +34,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [user?.companyId, pathname]);
   useEffect(() => {
     setMobileNavOpen(false);
+    setProfileOpen(false);
   }, [pathname]);
+  useEffect(() => {
+    if (!profileOpen) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest('.profile-dropdown')) setProfileOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [profileOpen]);
   return (
     <AuthGate>
       <div className="app-shell">
@@ -84,29 +106,70 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </nav>
           <div className="sidebar-bottom">
-            <div className="user-info">
-              <span className="user-avatar">{user?.name?.slice(0, 1) || 'U'}</span>
-              <div>
-                <strong>{user?.name || user?.email}</strong>
-                <span>{user?.email}</span>
-              </div>
+            <div className={`profile-dropdown ${profileOpen ? 'open' : ''}`}>
+              <button
+                type="button"
+                className="profile-trigger"
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
+                onClick={() => setProfileOpen((open) => !open)}
+              >
+                <span className="user-avatar">{user?.name?.slice(0, 1) || 'U'}</span>
+                <span className="profile-name">{user?.name || 'User'}</span>
+                <ChevronUp className="profile-chevron" aria-hidden="true" />
+              </button>
+              {profileOpen && (
+                <div className="profile-menu" role="menu">
+                  <div className="profile-menu-header">
+                    <span className="user-avatar">{user?.name?.slice(0, 1) || 'U'}</span>
+                    <div className="profile-menu-user">
+                      <strong>{user?.name || 'User'}</strong>
+                      <span>{user?.email}</span>
+                    </div>
+                  </div>
+                  <div className="profile-menu-divider" />
+                  <Link
+                    href="/settings"
+                    className="profile-menu-item"
+                    role="menuitem"
+                    onClick={() => setProfileOpen(false)}
+                  >
+                    <User aria-hidden="true" />
+                    <span>Profile & settings</span>
+                  </Link>
+                  <a
+                    href="mailto:support@biltybook.com"
+                    className="profile-menu-item"
+                    role="menuitem"
+                    onClick={() => setProfileOpen(false)}
+                  >
+                    <HelpCircle aria-hidden="true" />
+                    <span>Help & support</span>
+                  </a>
+                  <div className="profile-menu-divider" />
+                  <button
+                    type="button"
+                    className="profile-menu-item"
+                    role="menuitem"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      setProfileOpen(false);
+                      try {
+                        await logout();
+                      } catch (failure) {
+                        setError(errorMessage(failure));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    <LogOut aria-hidden="true" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              )}
             </div>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await logout();
-                } catch (failure) {
-                  setError(errorMessage(failure));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Sign out
-            </button>
           </div>
         </aside>
         <div className="main-column">
@@ -121,9 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {mobileNavOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
             </button>
-            <span className="topbar-title">Your digital bilty book</span>
-            <span className="workspace-dot" />
-            <span className="workspace-label">Private company workspace</span>
+            <div className="topbar-spacer" />
             <button
               className="mobile-signout text-button"
               disabled={busy}
@@ -146,7 +207,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             {children}
           </main>
           <footer className="app-footer">
-            Bilty <span>Made for the road ahead.</span>
+            <span className="brand-logo">
+              <span className="brand-bilty">Bilty</span>
+              <span className="brand-book">Book</span>
+            </span>
           </footer>
         </div>
       </div>
